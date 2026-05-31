@@ -2,9 +2,10 @@ import type { PlanType } from '../types'
 
 interface Props {
   onSelect: (type: PlanType) => void
+  loading?: boolean
 }
 
-export default function LandingPage({ onSelect }: Props) {
+export default function LandingPage({ onSelect, loading }: Props) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
       <div className="max-w-2xl w-full">
@@ -15,7 +16,8 @@ export default function LandingPage({ onSelect }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <button
             onClick={() => onSelect('development')}
-            className="bg-white rounded-2xl shadow-md border border-gray-200 p-8 text-left hover:shadow-xl hover:border-blue-400 transition-all group cursor-pointer"
+            disabled={loading}
+            className="bg-white rounded-2xl shadow-md border border-gray-200 p-8 text-left hover:shadow-xl hover:border-blue-400 transition-all group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <div className="w-14 h-14 rounded-xl bg-blue-100 flex items-center justify-center mb-4 group-hover:bg-blue-200 transition-colors">
               <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -28,7 +30,8 @@ export default function LandingPage({ onSelect }: Props) {
 
           <button
             onClick={() => onSelect('support')}
-            className="bg-white rounded-2xl shadow-md border border-gray-200 p-8 text-left hover:shadow-xl hover:border-green-400 transition-all group cursor-pointer"
+            disabled={loading}
+            className="bg-white rounded-2xl shadow-md border border-gray-200 p-8 text-left hover:shadow-xl hover:border-green-400 transition-all group cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <div className="w-14 h-14 rounded-xl bg-green-100 flex items-center justify-center mb-4 group-hover:bg-green-200 transition-colors">
               <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -39,7 +42,9 @@ export default function LandingPage({ onSelect }: Props) {
             <p className="text-gray-500 text-sm">For support and investigation activities — includes Preparation, Investigation, Fixing, Documentation, and Cascading phases.</p>
           </button>
         </div>
-        <p className="text-center text-xs text-gray-400 mt-8">No data is saved on any server — export only.</p>
+        <p className="text-center text-xs text-gray-400 mt-8">
+          {loading ? 'Creating plan...' : 'Plans are saved to the server and can be shared for approval.'}
+        </p>
       </div>
     </div>
   )

@@ -6,6 +6,9 @@ export type StatusValue =
   | 'DONE'
   | 'ON HOLD'
 
+// Plan lifecycle status
+export type PlanDocStatus = 'draft' | 'published' | 'for_revision' | 'rejected'
+
 export interface RACI {
   r: boolean
   a: boolean
@@ -30,25 +33,31 @@ export interface ActivityRow {
   number: string
   name: string
   isPhase: boolean
-  picEntries: PICEntry[]   // one or more PIC rows per activity
+  picEntries: PICEntry[]
   status: StatusValue
   progress: number
+  autoProgress?: boolean   // if true, % is auto-calculated from plan day marks vs today
   mh: number
   workingDays: number
   dayMarks: DayMark[]
 }
 
-export interface Approver {
+// Replaces old Approver — now holds signature, remarks, and revision info per slot
+export interface ApproverSlot {
   name: string
   role: string
+  remarks: string
+  signatureImage?: string   // base64 data URL of dropped/uploaded signature photo
+  approvedAt?: string       // ISO date string when signature was saved
+  sentForRevision?: boolean
+  revisionReason?: string
 }
 
 export interface ApprovalSection {
-  preparedBy: Approver
-  reviewedBy: Approver
-  approvedBy1: Approver
-  approvedBy2: Approver
-  remarks: string
+  preparedBy: ApproverSlot
+  reviewedBy: ApproverSlot
+  approvedBy1: ApproverSlot
+  approvedBy2: ApproverSlot
 }
 
 export interface DevPersons {
@@ -71,16 +80,28 @@ export interface MonthConfig {
   month: number  // 0-indexed
 }
 
+export interface VersionEntry {
+  version: string
+  date: string       // YYYY-MM-DD
+  reason: string
+  by: string
+}
+
 export interface ActivityPlan {
+  id: string
   type: PlanType
   title: string
+  itNumber?: string
   documentVersion: string
   persons: DevPersons | SupportPersons
   approvals: ApprovalSection
   activities: ActivityRow[]
   months: MonthConfig[]
   otDays: string[]
-  targetDate?: string   // YYYY-MM-DD for on-time / delay tracking
+  targetDate?: string        // YYYY-MM-DD
+  status: PlanDocStatus
+  versionHistory: VersionEntry[]
+  publishedAt?: string
 }
 
 // Self Check TR

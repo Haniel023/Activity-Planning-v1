@@ -1,0 +1,129 @@
+import type { ActivityPlan, ApprovalSection, SelfCheckTR } from './types'
+import { calcPlanStatus } from './utils'
+
+const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
+
+export interface PlanSummary {
+  id: string
+  title: string
+  type: string
+  status: string
+  version: string
+  createdAt: string
+  updatedAt: string
+  publishedAt: string | null
+  approvalCount: number
+  projectStatus: string
+  projectProgress: number
+  picName: string
+}
+
+async function req(url: string, opts?: RequestInit) {
+  const res = await fetch(url, opts)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(body.error || res.statusText)
+  }
+  return res.json()
+}
+
+export const api = {
+  async listPlans(): Promise<PlanSummary[]> {
+    const rows = await req(`${BASE}/plans`)
+    return rows.map((row: any) => {
+      // Calculate project status client-side using shared util
+      const fakePlan = { activities: row.activities || [], months: row.months || [], targetDate: row.targetDate } as ActivityPlan
+      const ps = calcPlanStatus(fakePlan)
+      return {
+        id: row.id,
+        title: row.title,
+        type: row.type,
+        status: row.status,
+        version: row.version,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        publishedAt: row.publishedAt,
+        approvalCount: row.approvalCount,
+        picName: row.picName || '',
+        projectStatus: ps.label,
+        projectProgress: ps.progress,
+      }
+    })
+  },
+
+  async getPlan(id: string): Promise<{ plan: ActivityPlan; selfCheck: SelfCheckTR | null }> {
+    return req(`${BASE}/plans/${id}`)
+  },
+
+  async createPlan(plan: ActivityPlan, selfCheck: SelfCheckTR): Promise<{ id: string }> {
+    return req(`${BASE}/plans`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan, selfCheck }),
+    })
+  },
+
+  async updatePlan(id: string, plan: ActivityPlan, selfCheck: SelfCheckTR): Promise<void> {
+    await req(`${BASE}/plans/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan, selfCheck }),
+    })
+  },
+
+  async deletePlan(id: string): Promise<void> {
+    await req(`${BASE}/plans/${id}`, { method: 'DELETE' })
+  },
+
+  async publishPlan(id: string): Promise<void> {
+    await req(`${BASE}/plans/${id}/publish`, { method: 'POST' })
+  },
+
+  async sendForRevision(id: string, reason: string, by: string): Promise<{ newVersion: string }> {
+    return req(`${BASE}/plans/${id}/revision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason, by }),
+    })
+  },
+
+  async republish(id: string, by: string): Promise<{ newVersion: string }> {
+    return req(`${BASE}/plans/${id}/republish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ by }),
+    })
+  },
+
+  async rejectPlan(id: string, reason: string, by: string): Promise<void> {
+    await req(`${BASE}/plans/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason, by }),
+    })
+  },
+
+  async versionUp(id: string, reason: string, by: string): Promise<{ newVersion: string }> {
+    return req(`${BASE}/plans/${id}/version-up`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason, by }),
+    })
+  },
+
+  async saveProgress(id: string, activities: ActivityPlan['activities']): Promise<void> {
+    await req(`${BASE}/plans/${id}/save-progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activities }),
+    })
+  },
+
+  async updateApprovals(id: string, approvals: ApprovalSection): Promise<void> {
+    await req(`${BASE}/plans/${id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvals }),
+    })
+  },
+}

@@ -1,73 +1,93 @@
-# React + TypeScript + Vite
+# Activity Planning
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A project management web application for creating, tracking, and approving structured activity plans — built for teams that need accountability, audit trails, and structured workflows.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- **Dual Plan Types** — Development and Support plans with tailored phase structures
+- **RACI Matrix** — Per-activity role tracking (Responsible / Accountable / Consulted / Informed)
+- **Approval Workflow** — Multi-stage signatures: Prepared By → Reviewed By → Approved By
+- **Progress Tracking** — Auto-calculated from planned vs. actual day marks; status indicators (On Time / At Risk / Delayed / Complete)
+- **Version Control** — Plan lifecycle: Draft → Published → For Revision, with version history
+- **Self-Check & TR Checklist** — 10-point quality assurance checkpoint with per-version records
+- **Excel Export** — Color-coded, formatted workbooks with activity tables, approval sections, and checklists
+- **Shareable Viewer** — Read-only view link for approvers and stakeholders
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, TypeScript, Vite |
+| Routing | React Router v7 |
+| Styling | Tailwind CSS v4 |
+| Icons | Lucide React |
+| Backend | Express.js v5 |
+| Database | Better-SQLite3 |
+| Export | ExcelJS, XLSX |
+| Dev | Concurrently, ESLint |
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Getting Started
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+**Prerequisites:** Node.js 18+
+
+```bash
+# Install dependencies
+npm install
+
+# Run frontend + backend together
+npm run dev:all
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The app will be available at `http://localhost:5173` and the API at `http://localhost:3001`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Plan Workflow
+
 ```
+New Plan
+   │
+   ▼
+[DRAFT] ──────► Edit activities, RACI, schedules
+   │
+   ▼
+[PUBLISHED] ───► Shared with approvers via view link
+   │
+   ├──► [FOR REVISION] ──► Edit → re-publish (version bumped)
+   └──► [REJECTED]
+```
+
+---
+
+## Project Structure
+
+```
+activity-planning/
+├── src/
+│   ├── components/       # Shared UI components
+│   ├── pages/            # Dashboard, PlanEditor, PlanViewer
+│   ├── types/            # TypeScript interfaces
+│   └── utils/            # Excel export, helpers
+├── server/               # Express API + SQLite database
+└── public/
+```
+
+---
+
+## Plan Types
+
+**Development Plan** phases: `Preparation → Design → Development → Testing → Implementation`
+
+**Support Plan** phases: `Preparation → Investigation → Fixing → Documentation → Cascading`
+
+---
+
+## License
+
+MIT

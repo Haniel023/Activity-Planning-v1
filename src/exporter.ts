@@ -1,6 +1,6 @@
 import { Workbook } from 'exceljs'
 import type { ActivityPlan, MonthConfig, SelfCheckTR } from './types'
-import { monthLabel, daysInMonth, toDateStr, isWeekend, dayOfWeekAbbr, dayNumber } from './utils'
+import { monthLabel, daysInMonth, toDateStr, isWeekend, dayOfWeekAbbr, dayNumber, calcAutoProgress } from './utils'
 
 // ── Colour palette ──────────────────────────────────────────────────────────
 const C = {
@@ -64,6 +64,7 @@ function allDates(months: MonthConfig[]): string[] {
 // ── Activity Plan Sheet ──────────────────────────────────────────────────────
 export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan) {
   const { months, activities, approvals, type, title, documentVersion, otDays } = plan
+  let activityStartRow = 0   // set after all header rows — used for freeze pane
   const dates = allDates(months)
   const otSet = new Set(otDays)
 
@@ -130,7 +131,12 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan) {
     const c = ws.getCell(r, apCols[i]); c.value = ap?.role ?? ''; sc(c, { bold: true, italic: true, center: true, bg: C.approvalBg, border: true })
     ws.mergeCells(r, apCols[i], r, apCols[i] + 3)
   })
-  const remCell = ws.getCell(r, apCols[4]); remCell.value = approvals.remarks; sc(remCell, { bg: C.approvalBg, border: true })
+  // Combine per-slot remarks for the export remarks cell
+  const combinedRemarks = [approvals.preparedBy, approvals.reviewedBy, approvals.approvedBy1, approvals.approvedBy2]
+    .filter(s => s.remarks?.trim())
+    .map(s => `[${s.role}] ${s.remarks}`)
+    .join('\n')
+  const remCell = ws.getCell(r, apCols[4]); remCell.value = combinedRemarks; sc(remCell, { bg: C.approvalBg, border: true })
   r++
 
   // ── Main column header ────────────────────────────────────────────────────
@@ -159,6 +165,8 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan) {
     sc(c, { center: true, wrap: true, bg: wknd ? (isOT ? C.ot : C.weekend) : C.wkHdr, border: true, fontSize: 7, fontColor: wknd ? (isOT ? 'FF92400E' : 'FF6B7280') : 'FF374151' })
   })
   r++
+
+  activityStartRow = r  // everything before this row is frozen
 
   // ── Activity rows ─────────────────────────────────────────────────────────
   for (const act of activities) {
@@ -197,8 +205,9 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan) {
           // Merge No, Activity, Status, %, MH, Days across all rows
           const no = ws.getCell(actStartRow, 1); no.value = act.number; sc(no, { border: true, center: true })
           const name = ws.getCell(actStartRow, 2); name.value = act.name; sc(name, { border: true })
-          const st = ws.getCell(actStartRow, 8); st.value = `${act.progress}% — ${act.status}`; sc(st, { center: true, border: true, bg: statusBg, fontSize: 7 })
-          const pct = ws.getCell(actStartRow, 9); pct.value = act.progress; sc(pct, { center: true, border: true, bg: statusBg })
+          const effectivePct = act.autoProgress ? calcAutoProgress(act) : act.progress
+          const st = ws.getCell(actStartRow, 8); st.value = `${effectivePct}% — ${act.status}`; sc(st, { center: true, border: true, bg: statusBg, fontSize: 7 })
+          const pct = ws.getCell(actStartRow, 9); pct.value = effectivePct; sc(pct, { center: true, border: true, bg: statusBg })
           const mh = ws.getCell(actStartRow, 10); mh.value = act.mh; sc(mh, { center: true, border: true })
           const days = ws.getCell(actStartRow, 11); days.value = act.workingDays; sc(days, { center: true, border: true })
           if (totalSpan > 1) {
@@ -261,8 +270,14 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan) {
     r++
   })
 
-  // Freeze panes: freeze rows above header and first 2 columns
-  ws.views = [{ state: 'frozen', xSplit: 2, ySplit: r - (activities.length * 3) - 1, topLeftCell: 'C1', activeCell: 'C1' }]
+  // Freeze header rows and first 2 columns
+  ws.views = [{
+    state: 'frozen',
+    xSplit: 2,
+    ySplit: activityStartRow - 1,
+    topLeftCell: `C${activityStartRow}`,
+    activeCell: `C${activityStartRow}`,
+  }]
 }
 
 // ── Self Check TR Sheet ──────────────────────────────────────────────────────
@@ -372,8 +387,10 @@ export async function exportToExcel(plan: ActivityPlan, sc3: SelfCheckTR): Promi
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
-  const safeName = (plan.title || 'ActivityPlan').replace(/[\\/:*?"<>|]/g, '_')
-  link.download = `IT-ActivityPlan_${safeName}_v${plan.documentVersion}.xlsx`
+  const safeStr = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_').trim()
+  const itPart = plan.itNumber?.trim() ? `${safeStr(plan.itNumber)}-` : ''
+  const titlePart = safeStr(plan.title || 'ActivityPlan')
+  link.download = `${itPart}Activity Plan-${titlePart}-v${plan.documentVersion}.xlsx`
   link.href = url
   link.click()
   URL.revokeObjectURL(url)
