@@ -391,7 +391,7 @@ export default function PlanEditor() {
 
         {tab === 'selfcheck' && (
           <main className="flex-1 overflow-auto p-4">
-            <SelfCheckTRView data={selfCheck} onChange={isLocked ? () => {} : setSelfCheck} />
+            <SelfCheckTRView data={selfCheck} onChange={isLocked ? () => {} : setSelfCheck} readOnly={isLocked} />
           </main>
         )}
       </div>

@@ -1,19 +1,40 @@
-import type { SelfCheckTR } from '../types'
+import type { SelfCheckTR, SelfCheckItem } from '../types'
 import { CHECK_OPTIONS } from '../utils'
 
 interface Props {
   data: SelfCheckTR
   onChange: (data: SelfCheckTR) => void
+  readOnly?: boolean
 }
 
-export default function SelfCheckTRView({ data, onChange }: Props) {
-  function setItem(no: number, field: string, value: string) {
+export default function SelfCheckTRView({ data, onChange, readOnly }: Props) {
+  function setItem(no: number, field: keyof SelfCheckItem, value: string) {
     onChange({
       ...data,
       items: data.items.map(item =>
         item.no === no ? { ...item, [field]: value } : item
       ),
     })
+  }
+
+  function addRow() {
+    const maxNo = data.items.reduce((m, i) => Math.max(m, i.no), 0)
+    const newItem: SelfCheckItem = {
+      no: maxNo + 1,
+      checkpoint: '',
+      expectedResult: '',
+      selfCheck1: '',
+      selfCheck2: '',
+      tr1: '',
+      tr2: '',
+      remarks: '',
+    }
+    onChange({ ...data, items: [...data.items, newItem] })
+  }
+
+  function removeRow(no: number) {
+    if (data.items.length <= 1) return
+    onChange({ ...data, items: data.items.filter(i => i.no !== no) })
   }
 
   function addVersion() {
@@ -45,15 +66,17 @@ export default function SelfCheckTRView({ data, onChange }: Props) {
         <div className="flex items-center gap-3 text-xs">
           <label className="text-gray-500">Self Check PIC:</label>
           <input
-            className="border border-gray-200 rounded px-2 py-1 text-xs w-32 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="border border-gray-200 rounded px-2 py-1 text-xs w-32 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50"
             value={data.selfCheckPIC}
+            disabled={readOnly}
             onChange={e => onChange({ ...data, selfCheckPIC: e.target.value })}
             placeholder="RA Incharge"
           />
           <label className="text-gray-500">TR PIC:</label>
           <input
-            className="border border-gray-200 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="border border-gray-200 rounded px-2 py-1 text-xs w-40 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:bg-gray-50"
             value={data.trPIC}
+            disabled={readOnly}
             onChange={e => onChange({ ...data, trPIC: e.target.value })}
             placeholder="Project Leader / SE"
           />
@@ -76,6 +99,7 @@ export default function SelfCheckTRView({ data, onChange }: Props) {
                 <span className="text-gray-400 font-normal">PIC: Project Leader / SE</span>
               </th>
               <th className="border border-gray-200 px-2 py-2 text-left w-48">Remarks</th>
+              {!readOnly && <th className="border border-gray-200 w-6" />}
             </tr>
             <tr className="bg-gray-50 text-gray-500">
               <th className="border border-gray-200" colSpan={3} />
@@ -84,19 +108,43 @@ export default function SelfCheckTRView({ data, onChange }: Props) {
               <th className="border border-gray-200 px-2 py-1 text-center w-20">1st Round</th>
               <th className="border border-gray-200 px-2 py-1 text-center w-20">2nd Round</th>
               <th className="border border-gray-200" />
+              {!readOnly && <th className="border border-gray-200" />}
             </tr>
           </thead>
           <tbody>
             {data.items.map(item => (
               <tr key={item.no} className="hover:bg-gray-50">
-                <td className="border border-gray-200 px-2 py-1.5 text-center text-gray-500">{item.no}</td>
-                <td className="border border-gray-200 px-2 py-1.5 text-gray-700 font-medium">{item.checkpoint}</td>
-                <td className="border border-gray-200 px-2 py-1.5 text-gray-600">{item.expectedResult}</td>
+                <td className="border border-gray-200 px-2 py-1.5 text-center text-gray-400">{item.no}</td>
+                <td className="border border-gray-200 px-1 py-1">
+                  {readOnly ? (
+                    <span className="px-1 text-gray-700 font-medium">{item.checkpoint}</span>
+                  ) : (
+                    <input
+                      className="w-full bg-transparent text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 rounded px-1 text-gray-700 font-medium"
+                      value={item.checkpoint}
+                      onChange={e => setItem(item.no, 'checkpoint', e.target.value)}
+                      placeholder="Checkpoint"
+                    />
+                  )}
+                </td>
+                <td className="border border-gray-200 px-1 py-1">
+                  {readOnly ? (
+                    <span className="px-1 text-gray-600">{item.expectedResult}</span>
+                  ) : (
+                    <input
+                      className="w-full bg-transparent text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 rounded px-1 text-gray-600"
+                      value={item.expectedResult}
+                      onChange={e => setItem(item.no, 'expectedResult', e.target.value)}
+                      placeholder="Expected result"
+                    />
+                  )}
+                </td>
                 {(['selfCheck1', 'selfCheck2', 'tr1', 'tr2'] as const).map(field => (
                   <td key={field} className="border border-gray-200 px-1 py-1 text-center">
                     <select
-                      className="text-xs bg-transparent focus:outline-none w-full text-center"
+                      className="text-xs bg-transparent focus:outline-none w-full text-center disabled:opacity-60"
                       value={item[field]}
+                      disabled={readOnly}
                       onChange={e => setItem(item.no, field, e.target.value)}
                     >
                       {CHECK_OPTIONS.map(opt => (
@@ -107,28 +155,54 @@ export default function SelfCheckTRView({ data, onChange }: Props) {
                 ))}
                 <td className="border border-gray-200 px-2 py-1">
                   <input
-                    className="w-full bg-transparent text-xs focus:outline-none text-gray-600"
+                    className="w-full bg-transparent text-xs focus:outline-none text-gray-600 disabled:opacity-60"
                     value={item.remarks}
+                    disabled={readOnly}
                     onChange={e => setItem(item.no, 'remarks', e.target.value)}
                     placeholder="—"
                   />
                 </td>
+                {!readOnly && (
+                  <td className="border border-gray-200 text-center px-1">
+                    <button
+                      onClick={() => removeRow(item.no)}
+                      disabled={data.items.length <= 1}
+                      className="text-gray-300 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Remove row"
+                    >
+                      ✕
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
+      {!readOnly && (
+        <div className="px-4 py-2 border-t border-gray-100">
+          <button
+            onClick={addRow}
+            className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded transition-colors"
+          >
+            + Add Checkpoint
+          </button>
+        </div>
+      )}
+
       {/* Version Control */}
       <div className="px-6 py-4 border-t border-gray-100">
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Version Control</h3>
-          <button
-            onClick={addVersion}
-            className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded transition-colors"
-          >
-            + Add
-          </button>
+          {!readOnly && (
+            <button
+              onClick={addVersion}
+              className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-0.5 rounded transition-colors"
+            >
+              + Add
+            </button>
+          )}
         </div>
         <table className="text-xs w-full border-collapse">
           <thead>
@@ -137,27 +211,29 @@ export default function SelfCheckTRView({ data, onChange }: Props) {
               <th className="border border-gray-200 px-2 py-1 text-left">Reason for Revision</th>
               <th className="border border-gray-200 px-2 py-1 text-center w-28">Date</th>
               <th className="border border-gray-200 px-2 py-1 text-left w-32">Updated By</th>
-              <th className="border border-gray-200 w-8" />
+              {!readOnly && <th className="border border-gray-200 w-8" />}
             </tr>
           </thead>
           <tbody>
             {data.versionHistory.map((v, idx) => (
               <tr key={idx} className="hover:bg-gray-50">
                 <td className="border border-gray-200 px-1 py-0.5">
-                  <input className="w-full bg-transparent focus:outline-none" value={v.version} onChange={e => setVersion(idx, 'version', e.target.value)} placeholder="1.00" />
+                  <input className="w-full bg-transparent focus:outline-none disabled:opacity-60" disabled={readOnly} value={v.version} onChange={e => setVersion(idx, 'version', e.target.value)} placeholder="1.00" />
                 </td>
                 <td className="border border-gray-200 px-1 py-0.5">
-                  <input className="w-full bg-transparent focus:outline-none" value={v.reason} onChange={e => setVersion(idx, 'reason', e.target.value)} placeholder="Reason" />
+                  <input className="w-full bg-transparent focus:outline-none disabled:opacity-60" disabled={readOnly} value={v.reason} onChange={e => setVersion(idx, 'reason', e.target.value)} placeholder="Reason" />
                 </td>
                 <td className="border border-gray-200 px-1 py-0.5">
-                  <input type="date" className="w-full bg-transparent focus:outline-none text-center" value={v.date} onChange={e => setVersion(idx, 'date', e.target.value)} />
+                  <input type="date" className="w-full bg-transparent focus:outline-none text-center disabled:opacity-60" disabled={readOnly} value={v.date} onChange={e => setVersion(idx, 'date', e.target.value)} />
                 </td>
                 <td className="border border-gray-200 px-1 py-0.5">
-                  <input className="w-full bg-transparent focus:outline-none" value={v.updatedBy} onChange={e => setVersion(idx, 'updatedBy', e.target.value)} placeholder="Name" />
+                  <input className="w-full bg-transparent focus:outline-none disabled:opacity-60" disabled={readOnly} value={v.updatedBy} onChange={e => setVersion(idx, 'updatedBy', e.target.value)} placeholder="Name" />
                 </td>
-                <td className="border border-gray-200 text-center">
-                  <button onClick={() => removeVersion(idx)} className="text-red-300 hover:text-red-500">✕</button>
-                </td>
+                {!readOnly && (
+                  <td className="border border-gray-200 text-center">
+                    <button onClick={() => removeVersion(idx)} className="text-red-300 hover:text-red-500">✕</button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

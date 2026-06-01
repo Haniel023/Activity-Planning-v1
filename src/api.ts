@@ -1,4 +1,4 @@
-import type { ActivityPlan, ApprovalSection, SelfCheckTR } from './types'
+import type { ActivityPlan, ApprovalSection, SelfCheckTR, ActivityRequest, GroupType } from './types'
 import { calcPlanStatus } from './utils'
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
@@ -16,6 +16,7 @@ export interface PlanSummary {
   projectStatus: string
   projectProgress: number
   picName: string
+  groupType: GroupType | null
 }
 
 async function req(url: string, opts?: RequestInit) {
@@ -31,7 +32,6 @@ export const api = {
   async listPlans(): Promise<PlanSummary[]> {
     const rows = await req(`${BASE}/plans`)
     return rows.map((row: any) => {
-      // Calculate project status client-side using shared util
       const fakePlan = { activities: row.activities || [], months: row.months || [], targetDate: row.targetDate } as ActivityPlan
       const ps = calcPlanStatus(fakePlan)
       return {
@@ -45,6 +45,7 @@ export const api = {
         publishedAt: row.publishedAt,
         approvalCount: row.approvalCount,
         picName: row.picName || '',
+        groupType: row.groupType ?? null,
         projectStatus: ps.label,
         projectProgress: ps.progress,
       }
@@ -125,5 +126,31 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approvals }),
     })
+  },
+
+  // ── Activity Requests ────────────────────────────────────────────────────────
+
+  async listRequests(): Promise<ActivityRequest[]> {
+    return req(`${BASE}/requests`)
+  },
+
+  async createRequest(data: Omit<ActivityRequest, 'id' | 'createdAt' | 'updatedAt' | 'status'>): Promise<{ id: string }> {
+    return req(`${BASE}/requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateRequest(id: string, data: Partial<Omit<ActivityRequest, 'id' | 'createdAt' | 'updatedAt'>>): Promise<void> {
+    await req(`${BASE}/requests/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteRequest(id: string): Promise<void> {
+    await req(`${BASE}/requests/${id}`, { method: 'DELETE' })
   },
 }

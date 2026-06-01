@@ -39,6 +39,7 @@ app.get('/api/plans', (_req, res) => {
       publishedAt: row.published_at,
       approvalCount,
       picName: data.approvals?.preparedBy?.name || '',
+      groupType: data.groupType ?? null,
       targetDate: data.targetDate ?? null,
       months: data.months ?? [],
       activities: data.activities ?? [],
@@ -232,6 +233,51 @@ app.post('/api/plans/:id/approve', (req, res) => {
   data.approvals = approvals
   const ts = now()
   db.prepare('UPDATE plans SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(data), ts, req.params.id)
+  res.json({ ok: true })
+})
+
+// ── Activity Requests ─────────────────────────────────────────────────────────
+
+app.get('/api/requests', (_req, res) => {
+  const rows = (db.prepare(
+    'SELECT * FROM activity_requests ORDER BY created_at DESC'
+  ).all()) as any[]
+  res.json(rows.map(r => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    targetDate: r.target_date,
+    pic: r.pic,
+    status: r.status,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  })))
+})
+
+app.post('/api/requests', (req, res) => {
+  const { title, description, targetDate, pic, createdBy } = req.body
+  const id = randomUUID()
+  const ts = now()
+  db.prepare(`
+    INSERT INTO activity_requests (id, title, description, target_date, pic, status, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?)
+  `).run(id, title || '', description || '', targetDate || '', pic || '', createdBy || '', ts, ts)
+  res.json({ id })
+})
+
+app.put('/api/requests/:id', (req, res) => {
+  const { title, description, targetDate, pic, status, createdBy } = req.body
+  const ts = now()
+  db.prepare(`
+    UPDATE activity_requests SET title = ?, description = ?, target_date = ?, pic = ?, status = ?, created_by = ?, updated_at = ?
+    WHERE id = ?
+  `).run(title || '', description || '', targetDate || '', pic || '', status || 'open', createdBy || '', ts, req.params.id)
+  res.json({ ok: true })
+})
+
+app.delete('/api/requests/:id', (req, res) => {
+  db.prepare('DELETE FROM activity_requests WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })
 

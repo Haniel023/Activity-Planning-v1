@@ -1,4 +1,5 @@
 export type PlanType = 'development' | 'support'
+export type GroupType = 'SMART' | 'DEV' | 'NETWORK'
 
 export type StatusValue =
   | 'NOT YET STARTED'
@@ -36,19 +37,18 @@ export interface ActivityRow {
   picEntries: PICEntry[]
   status: StatusValue
   progress: number
-  autoProgress?: boolean   // if true, % is auto-calculated from plan day marks vs today
+  autoProgress?: boolean
   mh: number
   workingDays: number
   dayMarks: DayMark[]
 }
 
-// Replaces old Approver — now holds signature, remarks, and revision info per slot
 export interface ApproverSlot {
   name: string
   role: string
   remarks: string
-  signatureImage?: string   // base64 data URL of dropped/uploaded signature photo
-  approvedAt?: string       // ISO date string when signature was saved
+  signatureImage?: string
+  approvedAt?: string
   sentForRevision?: boolean
   revisionReason?: string
 }
@@ -75,6 +75,12 @@ export interface SupportPersons {
   pm: string
 }
 
+export interface AdditionalPerson {
+  id: string
+  role: string
+  name: string
+}
+
 export interface MonthConfig {
   year: number
   month: number  // 0-indexed
@@ -93,7 +99,9 @@ export interface ActivityPlan {
   title: string
   itNumber?: string
   documentVersion: string
+  groupType?: GroupType
   persons: DevPersons | SupportPersons
+  additionalPersons?: AdditionalPerson[]
   approvals: ApprovalSection
   activities: ActivityRow[]
   months: MonthConfig[]
@@ -134,4 +142,16 @@ export interface SelfCheckTR {
   trPIC: string
   items: SelfCheckItem[]
   versionHistory: { version: string; reason: string; date: string; updatedBy: string }[]
+}
+
+export interface ActivityRequest {
+  id: string
+  title: string
+  description: string
+  targetDate: string
+  pic: string
+  status: 'open' | 'in_progress' | 'done'
+  createdBy: string
+  createdAt: string
+  updatedAt: string
 }

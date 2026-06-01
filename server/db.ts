@@ -21,3 +21,17 @@ db.exec(`
     published_at TEXT
   )
 `)
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS activity_requests (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    target_date TEXT NOT NULL DEFAULT '',
+    pic         TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'open',
+    created_by  TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  )
+`)

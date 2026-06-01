@@ -190,7 +190,9 @@ export function createDefaultPlan(type: PlanType): ActivityPlan {
     type,
     title: '',
     documentVersion: '1.00',
+    groupType: undefined,
     persons: type === 'development' ? devPersons : supportPersons,
+    additionalPersons: [],
     approvals: {
       preparedBy:  { name: '', role: 'PIC',            remarks: '' },
       reviewedBy:  { name: '', role: 'PROJECT LEADER', remarks: '' },

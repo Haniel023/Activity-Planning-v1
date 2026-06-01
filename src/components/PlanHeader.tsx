@@ -1,5 +1,5 @@
-import type { ActivityPlan, DevPersons, SupportPersons, MonthConfig } from '../types'
-import { monthLabel, syncDayMarks, generateDayMarks, calcPlanStatus } from '../utils'
+import type { ActivityPlan, DevPersons, SupportPersons, MonthConfig, GroupType, AdditionalPerson } from '../types'
+import { monthLabel, syncDayMarks, generateDayMarks, calcPlanStatus, generateId } from '../utils'
 
 interface Props {
   plan: ActivityPlan
@@ -13,6 +13,12 @@ const STATUS_STYLE = {
   'AT RISK':     { bg: 'bg-amber-100',  text: 'text-amber-700',  bar: 'bg-amber-500'  },
   'DELAYED':     { bg: 'bg-red-100',    text: 'text-red-700',    bar: 'bg-red-500'    },
   'NOT STARTED': { bg: 'bg-gray-100',   text: 'text-gray-600',   bar: 'bg-gray-400'   },
+}
+
+const GROUP_STYLE: Record<GroupType, string> = {
+  SMART:   'bg-purple-50 text-purple-700 border-purple-200',
+  DEV:     'bg-blue-50 text-blue-700 border-blue-200',
+  NETWORK: 'bg-teal-50 text-teal-700 border-teal-200',
 }
 
 export default function PlanHeader({ plan, onChange, readOnly }: Props) {
@@ -52,6 +58,23 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
 
   function updateMonth(idx: number, m: MonthConfig) {
     applyMonthChange(plan.months.map((x, i) => (i === idx ? m : x)))
+  }
+
+  const additionalPersons: AdditionalPerson[] = plan.additionalPersons ?? []
+
+  function addAdditionalPerson() {
+    onChange({ ...plan, additionalPersons: [...additionalPersons, { id: generateId(), role: '', name: '' }] })
+  }
+
+  function updateAdditionalPerson(id: string, field: 'role' | 'name', value: string) {
+    onChange({
+      ...plan,
+      additionalPersons: additionalPersons.map(p => p.id === id ? { ...p, [field]: value } : p),
+    })
+  }
+
+  function removeAdditionalPerson(id: string) {
+    onChange({ ...plan, additionalPersons: additionalPersons.filter(p => p.id !== id) })
   }
 
   const status = calcPlanStatus(plan)
@@ -98,6 +121,31 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
         </div>
       </div>
 
+      {/* Group Type */}
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Group</label>
+        {readOnly ? (
+          plan.groupType ? (
+            <div className={`text-xs font-semibold px-2 py-1.5 rounded-lg border text-center ${GROUP_STYLE[plan.groupType]}`}>
+              {plan.groupType}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-400 px-2 py-1.5">—</div>
+          )
+        ) : (
+          <select
+            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+            value={plan.groupType ?? ''}
+            onChange={e => onChange({ ...plan, groupType: (e.target.value as GroupType) || undefined })}
+          >
+            <option value="">— Select Group —</option>
+            <option value="SMART">SMART</option>
+            <option value="DEV">DEV</option>
+            <option value="NETWORK">NETWORK</option>
+          </select>
+        )}
+      </div>
+
       {/* Target Date */}
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Target Date</label>
@@ -123,14 +171,12 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
                 : ''}
             </span>
           </div>
-          {/* Progress bar: planned vs expected */}
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] text-gray-500">
               <span>Actual progress</span>
               <span>{status.progress.toFixed(1)}%</span>
             </div>
             <div className="h-2 bg-white rounded-full border border-gray-200 overflow-hidden relative">
-              {/* Expected marker */}
               <div className="absolute top-0 h-full w-0.5 bg-gray-400 z-10" style={{ left: `${status.expectedProgress}%` }} title={`Expected: ${status.expectedProgress.toFixed(0)}%`} />
               <div className={`h-full rounded-full transition-all ${style.bar}`} style={{ width: `${status.progress}%` }} />
             </div>
@@ -161,6 +207,52 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
               <PersonField label="PM" value={persons.pm ?? ''} onChange={v => setPerson('pm', v)} readOnly={readOnly} />
             </>
           )}
+        </div>
+      </div>
+
+      {/* Additional Members */}
+      <div>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <p className="text-xs font-medium text-gray-500">Additional Members</p>
+          {!readOnly && (
+            <button
+              onClick={addAdditionalPerson}
+              className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100 transition-colors"
+            >
+              + Add
+            </button>
+          )}
+        </div>
+        {additionalPersons.length === 0 && (
+          <p className="text-xs text-gray-400 italic">{readOnly ? 'No additional members.' : 'Add extra team members here.'}</p>
+        )}
+        <div className="space-y-1">
+          {additionalPersons.map(p => (
+            <div key={p.id} className="flex items-center gap-1">
+              <input
+                className="w-24 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-500"
+                value={p.role}
+                disabled={readOnly}
+                onChange={e => updateAdditionalPerson(p.id, 'role', e.target.value)}
+                placeholder="Role"
+              />
+              <input
+                className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-500"
+                value={p.name}
+                disabled={readOnly}
+                onChange={e => updateAdditionalPerson(p.id, 'name', e.target.value)}
+                placeholder="Name"
+              />
+              {!readOnly && (
+                <button
+                  onClick={() => removeAdditionalPerson(p.id)}
+                  className="text-gray-300 hover:text-red-400 text-xs leading-none shrink-0"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
