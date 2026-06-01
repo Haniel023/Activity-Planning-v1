@@ -81,18 +81,20 @@ export default function UpdatesLog({ planId, canPost }: Props) {
     <div className="flex flex-col h-full max-w-3xl mx-auto w-full">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div>
+      <div className="mb-4 shrink-0">
+        <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-gray-800">Progress Updates</h2>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {canPost
-              ? 'Post remarks or progress notes for this plan.'
-              : 'This plan must be fully approved before updates can be posted.'}
-          </p>
+          {!loading && updates.length > 0 && (
+            <span className="text-[10px] font-medium text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full leading-none">
+              {updates.length}
+            </span>
+          )}
         </div>
-        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
-          {updates.length} update{updates.length !== 1 ? 's' : ''}
-        </span>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {canPost
+            ? 'Post remarks or progress notes for this plan.'
+            : 'This plan must be fully approved before updates can be posted.'}
+        </p>
       </div>
 
       {/* Feed */}
