@@ -144,6 +144,14 @@ export interface SelfCheckTR {
   versionHistory: { version: string; reason: string; date: string; updatedBy: string }[]
 }
 
+export interface ProgressUpdate {
+  id: string
+  planId: string
+  author: string
+  message: string
+  createdAt: string
+}
+
 export interface ActivityRequest {
   id: string
   title: string

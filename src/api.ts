@@ -1,4 +1,4 @@
-import type { ActivityPlan, ApprovalSection, SelfCheckTR, ActivityRequest, GroupType } from './types'
+import type { ActivityPlan, ApprovalSection, SelfCheckTR, ActivityRequest, ProgressUpdate, GroupType } from './types'
 import { calcPlanStatus } from './utils'
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
@@ -152,5 +152,23 @@ export const api = {
 
   async deleteRequest(id: string): Promise<void> {
     await req(`${BASE}/requests/${id}`, { method: 'DELETE' })
+  },
+
+  // ── Plan Updates ─────────────────────────────────────────────────────────────
+
+  async listUpdates(planId: string): Promise<ProgressUpdate[]> {
+    return req(`${BASE}/plans/${planId}/updates`)
+  },
+
+  async postUpdate(planId: string, author: string, message: string): Promise<{ id: string; createdAt: string }> {
+    return req(`${BASE}/plans/${planId}/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ author, message }),
+    })
+  },
+
+  async deleteUpdate(planId: string, updateId: string): Promise<void> {
+    await req(`${BASE}/plans/${planId}/updates/${updateId}`, { method: 'DELETE' })
   },
 }

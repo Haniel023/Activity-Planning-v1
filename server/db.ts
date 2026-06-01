@@ -23,6 +23,17 @@ db.exec(`
 `)
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS plan_updates (
+    id         TEXT PRIMARY KEY,
+    plan_id    TEXT NOT NULL,
+    author     TEXT NOT NULL DEFAULT '',
+    message    TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+  )
+`)
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS activity_requests (
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL DEFAULT '',

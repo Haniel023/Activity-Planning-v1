@@ -236,6 +236,45 @@ app.post('/api/plans/:id/approve', (req, res) => {
   res.json({ ok: true })
 })
 
+// ── Plan Updates (progress remarks) ──────────────────────────────────────────
+
+app.get('/api/plans/:id/updates', (req, res) => {
+  const rows = (db.prepare(
+    'SELECT * FROM plan_updates WHERE plan_id = ? ORDER BY created_at ASC'
+  ).all(req.params.id)) as any[]
+  res.json(rows.map(r => ({
+    id: r.id,
+    planId: r.plan_id,
+    author: r.author,
+    message: r.message,
+    createdAt: r.created_at,
+  })))
+})
+
+app.post('/api/plans/:id/updates', (req, res) => {
+  const row = db.prepare('SELECT status, data FROM plans WHERE id = ?').get(req.params.id) as any
+  if (!row) return res.status(404).json({ error: 'Plan not found' })
+  const data = JSON.parse(row.data)
+  const allApproved = ['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2']
+    .every((k: string) => data.approvals?.[k]?.signatureImage)
+  if (!allApproved) return res.status(403).json({ error: 'Updates only allowed on fully approved plans' })
+
+  const { author, message } = req.body
+  if (!message?.trim()) return res.status(400).json({ error: 'Message is required' })
+  const id = randomUUID()
+  const ts = now()
+  db.prepare(
+    'INSERT INTO plan_updates (id, plan_id, author, message, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, req.params.id, author || 'Anonymous', message.trim(), ts)
+  res.json({ id, createdAt: ts })
+})
+
+app.delete('/api/plans/:id/updates/:uid', (req, res) => {
+  db.prepare('DELETE FROM plan_updates WHERE id = ? AND plan_id = ?')
+    .run(req.params.uid, req.params.id)
+  res.json({ ok: true })
+})
+
 // ── Activity Requests ─────────────────────────────────────────────────────────
 
 app.get('/api/requests', (_req, res) => {

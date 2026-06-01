@@ -8,9 +8,10 @@ import PlanHeader from '../components/PlanHeader'
 import ApprovalSection from '../components/ApprovalSection'
 import ActivityTable from '../components/ActivityTable'
 import SelfCheckTRView from '../components/SelfCheckTRView'
+import UpdatesLog from '../components/UpdatesLog'
 import ConfirmModal from '../components/ConfirmModal'
 
-type Tab = 'plan' | 'selfcheck'
+type Tab = 'plan' | 'selfcheck' | 'updates'
 type SideSection = 'approval' | 'details'
 
 const DOC_STATUS_BANNER: Record<string, { bg: string; text: string; label: string }> = {
@@ -289,6 +290,15 @@ export default function PlanEditor() {
           <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs shrink-0">
             <button className={`px-3 py-1.5 transition-colors ${tab === 'plan' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`} onClick={() => setTab('plan')}>Activity Plan</button>
             <button className={`px-3 py-1.5 transition-colors ${tab === 'selfcheck' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`} onClick={() => setTab('selfcheck')}>Self Check / TR</button>
+            {isLocked && (
+              <button
+                className={`px-3 py-1.5 transition-colors flex items-center gap-1.5 ${tab === 'updates' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                onClick={() => setTab('updates')}
+              >
+                Updates
+                {allApproved && <span className={`w-1.5 h-1.5 rounded-full ${tab === 'updates' ? 'bg-white' : 'bg-green-500'}`} />}
+              </button>
+            )}
           </div>
 
           {/* Action buttons */}
@@ -392,6 +402,12 @@ export default function PlanEditor() {
         {tab === 'selfcheck' && (
           <main className="flex-1 overflow-auto p-4">
             <SelfCheckTRView data={selfCheck} onChange={isLocked ? () => {} : setSelfCheck} readOnly={isLocked} />
+          </main>
+        )}
+
+        {tab === 'updates' && (
+          <main className="flex-1 overflow-hidden p-4 flex">
+            <UpdatesLog planId={plan.id} canPost={allApproved} />
           </main>
         )}
       </div>
