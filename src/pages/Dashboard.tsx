@@ -88,7 +88,7 @@ function groupAnalytics(plans: PlanSummary[]) {
 // ── Empty form factories ──────────────────────────────────────────────────────
 
 function emptyRequestForm() {
-  return { title: '', description: '', targetDate: '', pic: '', createdBy: '' }
+  return { title: '', description: '', targetDate: '', itNumber: '', pic: '', createdBy: '' }
 }
 
 export default function Dashboard() {
@@ -118,7 +118,7 @@ export default function Dashboard() {
   const [requestForm, setRequestForm] = useState(emptyRequestForm())
   const [editingRequest, setEditingRequest] = useState<ActivityRequest | null>(null)
   const [confirmDeleteRequest, setConfirmDeleteRequest] = useState<ActivityRequest | null>(null)
-  const [filterReqStatus, setFilterReqStatus] = useState<'all' | 'open' | 'in_progress' | 'done'>('all')
+  const [filterReqStatus, setFilterReqStatus] = useState<'all' | 'open' | 'in_progress' | 'done'>('open')
   const [reqSearch, setReqSearch] = useState('')
   const [makePlanFor, setMakePlanFor] = useState<ActivityRequest | null>(null)
   const [savingRequest, setSavingRequest] = useState(false)
@@ -155,6 +155,7 @@ export default function Dashboard() {
     fromRequestId?: string,
     prefillTargetDate?: string,
     prefillPic?: string,
+    prefillItNumber?: string,
   ) {
     if (creating) return
     setCreating(true)
@@ -162,6 +163,7 @@ export default function Dashboard() {
       const plan = createDefaultPlan(type)
       if (prefillTitle) plan.title = prefillTitle
       if (prefillTargetDate) plan.targetDate = prefillTargetDate
+      if (prefillItNumber) plan.itNumber = prefillItNumber
       if (prefillPic) {
         // Fill PIC into the relevant persons field
         if (type === 'development') {
@@ -224,7 +226,7 @@ export default function Dashboard() {
 
   function openEditRequest(r: ActivityRequest) {
     setEditingRequest(r)
-    setRequestForm({ title: r.title, description: r.description, targetDate: r.targetDate, pic: r.pic, createdBy: r.createdBy })
+    setRequestForm({ title: r.title, description: r.description, targetDate: r.targetDate, itNumber: r.itNumber, pic: r.pic, createdBy: r.createdBy })
     setShowRequestForm(true)
   }
 
@@ -239,6 +241,7 @@ export default function Dashboard() {
         const { id } = await api.createRequest(requestForm)
         const newReq: ActivityRequest = {
           id,
+          itNumber: requestForm.itNumber,
           ...requestForm,
           status: 'open',
           createdAt: new Date().toISOString(),
@@ -316,7 +319,7 @@ export default function Dashboard() {
         <PlanTypeModal
           title={`Create Plan from Request`}
           subtitle={`"${makePlanFor.title}" — choose the plan type`}
-          onSelect={type => { handleSelectType(type, makePlanFor.title, makePlanFor.id, makePlanFor.targetDate, makePlanFor.pic); setMakePlanFor(null) }}
+          onSelect={type => { handleSelectType(type, makePlanFor.title, makePlanFor.id, makePlanFor.targetDate, makePlanFor.pic, makePlanFor.itNumber); setMakePlanFor(null) }}
           onClose={() => setMakePlanFor(null)}
           creating={creating}
         />
@@ -347,10 +350,13 @@ export default function Dashboard() {
                 <Field label="Target Date">
                   <input type="date" className={INPUT} value={requestForm.targetDate} onChange={e => setRequestForm(f => ({ ...f, targetDate: e.target.value }))} />
                 </Field>
-                <Field label="PIC (Person in Charge)">
-                  <input className={INPUT} value={requestForm.pic} onChange={e => setRequestForm(f => ({ ...f, pic: e.target.value }))} placeholder="Assigned to" />
+                <Field label="IT Number">
+                  <input className={INPUT} value={requestForm.itNumber} onChange={e => setRequestForm(f => ({ ...f, itNumber: e.target.value }))} placeholder="e.g. IT-2026-001" />
                 </Field>
               </div>
+              <Field label="PIC (Person in Charge)">
+                <input className={INPUT} value={requestForm.pic} onChange={e => setRequestForm(f => ({ ...f, pic: e.target.value }))} placeholder="Assigned to" />
+              </Field>
               <Field label="Requested by">
                 <input className={INPUT} value={requestForm.createdBy} onChange={e => setRequestForm(f => ({ ...f, createdBy: e.target.value }))} placeholder="Your name" />
               </Field>
@@ -752,6 +758,12 @@ export default function Dashboard() {
                           <p className="text-xs text-gray-500 leading-relaxed mb-3 line-clamp-3">{r.description}</p>
                         )}
                         <div className="space-y-1 text-xs text-gray-400">
+                          {r.itNumber && (
+                            <div className="flex items-center gap-1.5">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>
+                              <span className="text-gray-600 font-medium">{r.itNumber}</span>
+                            </div>
+                          )}
                           {r.pic && (
                             <div className="flex items-center gap-1.5">
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>

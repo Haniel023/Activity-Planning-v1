@@ -28,6 +28,7 @@ db.exec(`
     title       TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
     target_date TEXT NOT NULL DEFAULT '',
+    it_number   TEXT NOT NULL DEFAULT '',
     pic         TEXT NOT NULL DEFAULT '',
     status      TEXT NOT NULL DEFAULT 'open',
     created_by  TEXT NOT NULL DEFAULT '',

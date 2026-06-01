@@ -149,6 +149,7 @@ export interface ActivityRequest {
   title: string
   description: string
   targetDate: string
+  itNumber: string
   pic: string
   status: 'open' | 'in_progress' | 'done'
   createdBy: string

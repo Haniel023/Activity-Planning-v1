@@ -247,6 +247,7 @@ app.get('/api/requests', (_req, res) => {
     title: r.title,
     description: r.description,
     targetDate: r.target_date,
+    itNumber: r.it_number,
     pic: r.pic,
     status: r.status,
     createdBy: r.created_by,
@@ -256,23 +257,23 @@ app.get('/api/requests', (_req, res) => {
 })
 
 app.post('/api/requests', (req, res) => {
-  const { title, description, targetDate, pic, createdBy } = req.body
+  const { title, description, targetDate, itNumber, pic, createdBy } = req.body
   const id = randomUUID()
   const ts = now()
   db.prepare(`
-    INSERT INTO activity_requests (id, title, description, target_date, pic, status, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?)
-  `).run(id, title || '', description || '', targetDate || '', pic || '', createdBy || '', ts, ts)
+    INSERT INTO activity_requests (id, title, description, target_date, it_number, pic, status, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)
+  `).run(id, title || '', description || '', targetDate || '', itNumber || '', pic || '', createdBy || '', ts, ts)
   res.json({ id })
 })
 
 app.put('/api/requests/:id', (req, res) => {
-  const { title, description, targetDate, pic, status, createdBy } = req.body
+  const { title, description, targetDate, itNumber, pic, status, createdBy } = req.body
   const ts = now()
   db.prepare(`
-    UPDATE activity_requests SET title = ?, description = ?, target_date = ?, pic = ?, status = ?, created_by = ?, updated_at = ?
+    UPDATE activity_requests SET title = ?, description = ?, target_date = ?, it_number = ?, pic = ?, status = ?, created_by = ?, updated_at = ?
     WHERE id = ?
-  `).run(title || '', description || '', targetDate || '', pic || '', status || 'open', createdBy || '', ts, req.params.id)
+  `).run(title || '', description || '', targetDate || '', itNumber || '', pic || '', status || 'open', createdBy || '', ts, req.params.id)
   res.json({ ok: true })
 })
 
