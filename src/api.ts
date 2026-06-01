@@ -1,5 +1,5 @@
-import type { ActivityPlan, ApprovalSection, SelfCheckTR, ActivityRequest, ProgressUpdate, GroupType } from './types'
-import { calcPlanStatus } from './utils'
+import type { ActivityPlan, ApprovalSection, SelfCheckTR, ActivityRequest, ProgressUpdate, GroupType, CompanyHoliday } from './types'
+import { calcPlanStatus, migratePersonsToList } from './utils'
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
 
@@ -53,7 +53,13 @@ export const api = {
   },
 
   async getPlan(id: string): Promise<{ plan: ActivityPlan; selfCheck: SelfCheckTR | null }> {
-    return req(`${BASE}/plans/${id}`)
+    const result = await req(`${BASE}/plans/${id}`)
+    const plan = result.plan as ActivityPlan
+    // Migrate old persons object to personsList on load
+    if (!plan.personsList || plan.personsList.length === 0) {
+      plan.personsList = migratePersonsToList(plan.type, plan.persons as any)
+    }
+    return { plan, selfCheck: result.selfCheck }
   },
 
   async createPlan(plan: ActivityPlan, selfCheck: SelfCheckTR): Promise<{ id: string }> {
@@ -170,5 +176,23 @@ export const api = {
 
   async deleteUpdate(planId: string, updateId: string): Promise<void> {
     await req(`${BASE}/plans/${planId}/updates/${updateId}`, { method: 'DELETE' })
+  },
+
+  // ── Company Holidays ─────────────────────────────────────────────────────────
+
+  async listCompanyHolidays(): Promise<CompanyHoliday[]> {
+    return req(`${BASE}/holidays`)
+  },
+
+  async createCompanyHoliday(date: string, name: string): Promise<{ id: string }> {
+    return req(`${BASE}/holidays`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, name }),
+    })
+  },
+
+  async deleteCompanyHoliday(id: string): Promise<void> {
+    await req(`${BASE}/holidays/${id}`, { method: 'DELETE' })
   },
 }

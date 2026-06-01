@@ -1,4 +1,6 @@
-import type { ActivityPlan, DevPersons, SupportPersons, MonthConfig, GroupType, AdditionalPerson } from '../types'
+import { useState } from 'react'
+import type { ActivityPlan, MonthConfig, GroupType, PersonEntry } from '../types'
+import { PERSON_ROLES } from '../types'
 import { monthLabel, syncDayMarks, generateDayMarks, calcPlanStatus, generateId } from '../utils'
 
 interface Props {
@@ -21,16 +23,27 @@ const GROUP_STYLE: Record<GroupType, string> = {
   NETWORK: 'bg-teal-50 text-teal-700 border-teal-200',
 }
 
+const ROLE_COLORS: Record<string, string> = {
+  'Requestor':       'bg-sky-50 text-sky-700 border-sky-200',
+  'Main Support':    'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Sub Support':     'bg-teal-50 text-teal-700 border-teal-200',
+  'Developer':       'bg-indigo-50 text-indigo-700 border-indigo-200',
+  'Designer':        'bg-cyan-50 text-cyan-700 border-cyan-200',
+  'Sub Developer':   'bg-violet-50 text-violet-700 border-violet-200',
+  'Sub Designer':    'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
+  'SE':              'bg-purple-50 text-purple-700 border-purple-200',
+  'PM':              'bg-amber-50 text-amber-700 border-amber-200',
+  'Manager':         'bg-rose-50 text-rose-700 border-rose-200',
+  'Network-Support': 'bg-orange-50 text-orange-700 border-orange-200',
+}
+
 export default function PlanHeader({ plan, onChange, readOnly }: Props) {
   const isDev = plan.type === 'development'
-  const persons = plan.persons as DevPersons & SupportPersons
+  const [addRole, setAddRole] = useState<string>(PERSON_ROLES[0])
+  const personsList: PersonEntry[] = plan.personsList ?? []
 
   function setField(field: string, value: string) {
     onChange({ ...plan, [field]: value })
-  }
-
-  function setPerson(field: string, value: string) {
-    onChange({ ...plan, persons: { ...plan.persons, [field]: value } })
   }
 
   function applyMonthChange(newMonths: MonthConfig[]) {
@@ -60,21 +73,20 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
     applyMonthChange(plan.months.map((x, i) => (i === idx ? m : x)))
   }
 
-  const additionalPersons: AdditionalPerson[] = plan.additionalPersons ?? []
-
-  function addAdditionalPerson() {
-    onChange({ ...plan, additionalPersons: [...additionalPersons, { id: generateId(), role: '', name: '' }] })
+  function addPerson() {
+    const entry: PersonEntry = { id: generateId(), role: addRole, name: '' }
+    onChange({ ...plan, personsList: [...personsList, entry] })
   }
 
-  function updateAdditionalPerson(id: string, field: 'role' | 'name', value: string) {
+  function updatePerson(id: string, field: 'role' | 'name', value: string) {
     onChange({
       ...plan,
-      additionalPersons: additionalPersons.map(p => p.id === id ? { ...p, [field]: value } : p),
+      personsList: personsList.map(p => p.id === id ? { ...p, [field]: value } : p),
     })
   }
 
-  function removeAdditionalPerson(id: string) {
-    onChange({ ...plan, additionalPersons: additionalPersons.filter(p => p.id !== id) })
+  function removePerson(id: string) {
+    onChange({ ...plan, personsList: personsList.filter(p => p.id !== id) })
   }
 
   const status = calcPlanStatus(plan)
@@ -158,7 +170,7 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
         />
       </div>
 
-      {/* Status indicator — only show when targetDate is set */}
+      {/* Status indicator */}
       {plan.targetDate && (
         <div className={`rounded-lg border ${style.bg} p-2.5 space-y-1.5`}>
           <div className="flex items-center justify-between">
@@ -188,71 +200,74 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
         </div>
       )}
 
-      {/* Persons Involved */}
+      {/* Persons Involved — dynamic */}
       <div>
-        <p className="text-xs font-medium text-gray-500 mb-1.5">Persons Involved</p>
-        <div className="space-y-1.5">
-          <PersonField label="Requestor" value={persons.requestor ?? ''} onChange={v => setPerson('requestor', v)} readOnly={readOnly} />
-          {isDev ? (
-            <>
-              <PersonField label="Designer" value={persons.designer ?? ''} onChange={v => setPerson('designer', v)} readOnly={readOnly} />
-              <PersonField label="Developer" value={persons.developer ?? ''} onChange={v => setPerson('developer', v)} readOnly={readOnly} />
-              <PersonField label="SE" value={persons.se ?? ''} onChange={v => setPerson('se', v)} readOnly={readOnly} />
-              <PersonField label="PM" value={persons.pm ?? ''} onChange={v => setPerson('pm', v)} readOnly={readOnly} />
-            </>
-          ) : (
-            <>
-              <PersonField label="PIC" value={persons.smartMember ?? ''} onChange={v => setPerson('smartMember', v)} readOnly={readOnly} />
-              <PersonField label="SE" value={persons.se ?? ''} onChange={v => setPerson('se', v)} readOnly={readOnly} />
-              <PersonField label="PM" value={persons.pm ?? ''} onChange={v => setPerson('pm', v)} readOnly={readOnly} />
-            </>
-          )}
+        <div className="flex items-center gap-1.5 mb-2">
+          <p className="text-xs font-medium text-gray-500">Persons Involved</p>
+          <span className="text-[10px] text-gray-400">→ shown in PIC dropdown</span>
         </div>
-      </div>
 
-      {/* Additional Members */}
-      <div>
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <p className="text-xs font-medium text-gray-500">Additional Members</p>
-          {!readOnly && (
+        {!readOnly && (
+          <div className="flex gap-1.5 mb-2">
+            <select
+              value={addRole}
+              onChange={e => setAddRole(e.target.value)}
+              className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white text-gray-700"
+            >
+              {PERSON_ROLES.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
             <button
-              onClick={addAdditionalPerson}
-              className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100 transition-colors"
+              onClick={addPerson}
+              className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1 hover:bg-blue-100 transition-colors font-medium shrink-0"
             >
               + Add
             </button>
-          )}
-        </div>
-        {additionalPersons.length === 0 && (
-          <p className="text-xs text-gray-400 italic">{readOnly ? 'No additional members.' : 'Add extra team members here.'}</p>
+          </div>
         )}
-        <div className="space-y-1">
-          {additionalPersons.map(p => (
-            <div key={p.id} className="flex items-center gap-1">
-              <input
-                className="w-24 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-500"
-                value={p.role}
-                disabled={readOnly}
-                onChange={e => updateAdditionalPerson(p.id, 'role', e.target.value)}
-                placeholder="Role"
-              />
-              <input
-                className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-500"
-                value={p.name}
-                disabled={readOnly}
-                onChange={e => updateAdditionalPerson(p.id, 'name', e.target.value)}
-                placeholder="Name"
-              />
-              {!readOnly && (
-                <button
-                  onClick={() => removeAdditionalPerson(p.id)}
-                  className="text-gray-300 hover:text-red-400 text-xs leading-none shrink-0"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
+
+        {personsList.length === 0 && (
+          <p className="text-xs text-gray-400 italic">{readOnly ? 'No persons added.' : 'Select a role and click + Add.'}</p>
+        )}
+
+        <div className="space-y-1.5">
+          {personsList.map(p => {
+            const chipColor = ROLE_COLORS[p.role] ?? 'bg-gray-50 text-gray-600 border-gray-200'
+            return (
+              <div key={p.id} className="flex items-center gap-1.5">
+                {readOnly ? (
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${chipColor}`}>{p.role}</span>
+                ) : (
+                  <select
+                    value={p.role}
+                    onChange={e => updatePerson(p.id, 'role', e.target.value)}
+                    className={`text-[10px] font-semibold px-1.5 py-1 rounded-full border shrink-0 cursor-pointer focus:outline-none ${chipColor}`}
+                    style={{ WebkitAppearance: 'none' }}
+                  >
+                    {PERSON_ROLES.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                )}
+                <input
+                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-500"
+                  value={p.name}
+                  disabled={readOnly}
+                  onChange={e => updatePerson(p.id, 'name', e.target.value)}
+                  placeholder="Full name"
+                />
+                {!readOnly && (
+                  <button
+                    onClick={() => removePerson(p.id)}
+                    className="text-gray-300 hover:text-red-400 text-xs leading-none shrink-0 transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -280,16 +295,6 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
           ))}
         </div>
       </div>
-    </div>
-  )
-}
-
-function PersonField({ label, value, onChange, readOnly }: { label: string; value: string; onChange: (v: string) => void; readOnly?: boolean }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-400 w-20 shrink-0">{label}:</span>
-      <input className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-500"
-        value={value} disabled={readOnly} onChange={e => onChange(e.target.value)} placeholder={label} />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import type { ActivityRow, ActivityPlan, MonthConfig, PlanType, DevPersons, SupportPersons, SelfCheckTR, DayMark, PICEntry } from './types'
+import type { ActivityRow, ActivityPlan, MonthConfig, PlanType, DevPersons, SupportPersons, SelfCheckTR, DayMark, PICEntry, PersonEntry } from './types'
 import { SELF_CHECK_DEFAULTS } from './types'
 
 export function generateId() {
@@ -118,10 +118,37 @@ export function getPersonRoles(type: PlanType): string[] {
     : ['Requestor', 'SMART Member', 'SE', 'PM', 'Manager']
 }
 
-// Auto-fill name for an approval slot role from the plan's persons data
-export function autoFillNameForRole(role: string, type: PlanType, persons: DevPersons | SupportPersons): string {
-  const p = persons as DevPersons & SupportPersons
+// Migrate old persons object → personsList array
+export function migratePersonsToList(type: PlanType, persons: any): PersonEntry[] {
+  if (!persons) return []
+  const list: PersonEntry[] = []
+  if (type === 'development') {
+    if (persons.requestor?.trim()) list.push({ id: generateId(), role: 'Requestor', name: persons.requestor })
+    if (persons.designer?.trim())  list.push({ id: generateId(), role: 'Designer',  name: persons.designer  })
+    if (persons.developer?.trim()) list.push({ id: generateId(), role: 'Developer', name: persons.developer })
+    if (persons.se?.trim())        list.push({ id: generateId(), role: 'SE',        name: persons.se        })
+    if (persons.pm?.trim())        list.push({ id: generateId(), role: 'PM',        name: persons.pm        })
+  } else {
+    if (persons.requestor?.trim())   list.push({ id: generateId(), role: 'Requestor',    name: persons.requestor   })
+    if (persons.smartMember?.trim()) list.push({ id: generateId(), role: 'Main Support', name: persons.smartMember })
+    if (persons.se?.trim())          list.push({ id: generateId(), role: 'SE',           name: persons.se          })
+    if (persons.pm?.trim())          list.push({ id: generateId(), role: 'PM',           name: persons.pm          })
+  }
+  return list
+}
+
+// Auto-fill name for an approval slot role from personsList or legacy persons
+export function autoFillNameForRole(role: string, type: PlanType, persons: DevPersons | SupportPersons, personsList?: PersonEntry[]): string {
   const r = role.toUpperCase()
+  if (personsList && personsList.length > 0) {
+    if (r === 'PIC') {
+      const main = personsList.find(p => ['Main Support', 'Developer'].includes(p.role)) ?? personsList[0]
+      return main?.name || ''
+    }
+    if (r === 'PROJECT LEADER') return personsList.find(p => p.role === 'PM')?.name || ''
+    if (r === 'SUPERVISOR')     return personsList.find(p => p.role === 'SE')?.name || ''
+  }
+  const p = persons as DevPersons & SupportPersons
   if (r === 'PIC') return type === 'development' ? (p.developer || p.requestor || '') : (p.smartMember || p.requestor || '')
   if (r === 'PROJECT LEADER') return p.pm || ''
   if (r === 'SUPERVISOR') return p.se || ''
@@ -192,6 +219,7 @@ export function createDefaultPlan(type: PlanType): ActivityPlan {
     documentVersion: '1.00',
     groupType: undefined,
     persons: type === 'development' ? devPersons : supportPersons,
+    personsList: [],
     additionalPersons: [],
     approvals: {
       preparedBy:  { name: '', role: 'PIC',            remarks: '' },

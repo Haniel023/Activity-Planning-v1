@@ -1,6 +1,27 @@
 export type PlanType = 'development' | 'support'
 export type GroupType = 'SMART' | 'DEV' | 'NETWORK'
 
+export const PERSON_ROLES = [
+  'Requestor', 'Main Support', 'Sub Support',
+  'Developer', 'Designer', 'Sub Developer', 'Sub Designer',
+  'SE', 'PM', 'Manager', 'Network-Support',
+] as const
+
+export type PersonRole = typeof PERSON_ROLES[number]
+
+export interface PersonEntry {
+  id: string
+  role: string
+  name: string
+}
+
+export interface CompanyHoliday {
+  id: string
+  date: string
+  name: string
+  createdAt: string
+}
+
 export type StatusValue =
   | 'NOT YET STARTED'
   | 'ONGOING'
@@ -101,6 +122,7 @@ export interface ActivityPlan {
   documentVersion: string
   groupType?: GroupType
   persons: DevPersons | SupportPersons
+  personsList?: PersonEntry[]
   additionalPersons?: AdditionalPerson[]
   approvals: ApprovalSection
   activities: ActivityRow[]

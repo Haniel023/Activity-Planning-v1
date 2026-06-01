@@ -95,7 +95,7 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan, wb: Wor
   r++
 
   // ── Row 2: title + approval labels ───────────────────────────────────────
-  ws.getRow(r).height = 14
+  ws.getRow(r).height = 16
   const titleLabel = type === 'development' ? 'Project Title:' : 'Support Title:'
   const tCell = ws.getCell(r, 1); tCell.value = titleLabel; sc(tCell, { bold: true })
   const tVal = ws.getCell(r, 2); tVal.value = title; sc(tVal, { bold: true, fontColor: C.phaseTxt })
@@ -107,35 +107,57 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan, wb: Wor
     const c = ws.getCell(r, apCols[i])
     c.value = lbl; sc(c, { bold: true, center: true, bg: C.approvalBg, border: true })
     if (i < 4) ws.mergeCells(r, apCols[i], r, apCols[i] + 3)
+    else ws.mergeCells(r, apCols[i], r, apCols[i] + 7)   // wider remarks column
   })
   r++
 
   // ── Persons involved rows + approver names ────────────────────────────────
-  const persons = plan.persons as unknown as Record<string, string>
-  const personRows = type === 'development'
-    ? [['Requestor:', persons.requestor], ['Designer:', persons.designer], ['Developer:', persons.developer], ['SE:', persons.se], ['Project Manager:', persons.pm]]
-    : [['Requestor:', persons.requestor], ['SMART Member:', persons.smartMember], ['SE:', persons.se], ['Project Manager:', persons.pm]]
+  // Use personsList if available, otherwise fall back to legacy persons object
+  const rawPersonsList = plan.personsList && plan.personsList.length > 0
+    ? plan.personsList.map(p => [`${p.role}:`, p.name] as [string, string])
+    : (() => {
+        const persons = plan.persons as unknown as Record<string, string>
+        return type === 'development'
+          ? [['Requestor:', persons.requestor], ['Designer:', persons.designer], ['Developer:', persons.developer], ['SE:', persons.se], ['PM:', persons.pm]] as [string, string][]
+          : [['Requestor:', persons.requestor], ['PIC:', persons.smartMember], ['SE:', persons.se], ['PM:', persons.pm]] as [string, string][]
+      })()
 
   const approvers = [approvals.preparedBy, approvals.reviewedBy, approvals.approvedBy1, approvals.approvedBy2]
-  personRows.forEach(([label, value], i) => {
-    ws.getRow(r).height = 13
-    const lc = ws.getCell(r, 1); lc.value = label; sc(lc)
+  rawPersonsList.forEach(([label, value], i) => {
+    ws.getRow(r).height = 14
+    const lc = ws.getCell(r, 1); lc.value = label; sc(lc, { bold: true })
     const vc = ws.getCell(r, 2); vc.value = value ?? ''; sc(vc); ws.mergeCells(r, 2, r, 7)
-    if (i < 4) { const nc = ws.getCell(r, apCols[i]); nc.value = approvers[i]?.name ?? ''; sc(nc, { center: true, bg: C.approvalBg, border: true }); ws.mergeCells(r, apCols[i], r, apCols[i] + 3) }
+    if (i < 4) {
+      const nc = ws.getCell(r, apCols[i]); nc.value = approvers[i]?.name ?? ''
+      sc(nc, { center: true, bg: C.approvalBg, border: true })
+      ws.mergeCells(r, apCols[i], r, apCols[i] + 3)
+    }
+    // remarks cell spans alongside
+    if (i === 0) {
+      const rem = ws.getCell(r, apCols[4])
+      sc(rem, { bg: C.approvalBg, border: true, wrap: true })
+      ws.mergeCells(r, apCols[4], r + Math.max(rawPersonsList.length, 4), apCols[4] + 7)
+    }
     r++
   })
+  // If there are fewer person rows than approvers, fill remaining approver name cells
+  for (let i = rawPersonsList.length; i < 4; i++) {
+    ws.getRow(r).height = 14
+    if (i < 4) {
+      const nc = ws.getCell(r, apCols[i]); nc.value = approvers[i]?.name ?? ''
+      sc(nc, { center: true, bg: C.approvalBg, border: true })
+      ws.mergeCells(r, apCols[i], r, apCols[i] + 3)
+    }
+    r++
+  }
 
-  // Approval roles row + remarks
-  ws.getRow(r).height = 13
+  // Approval roles row
+  ws.getRow(r).height = 14
   approvers.forEach((ap, i) => {
-    const c = ws.getCell(r, apCols[i]); c.value = ap?.role ?? ''; sc(c, { bold: true, italic: true, center: true, bg: C.approvalBg, border: true })
+    const c = ws.getCell(r, apCols[i]); c.value = ap?.role ?? ''
+    sc(c, { bold: true, italic: true, center: true, bg: C.approvalBg, border: true })
     ws.mergeCells(r, apCols[i], r, apCols[i] + 3)
   })
-  const combinedRemarks = [approvals.preparedBy, approvals.reviewedBy, approvals.approvedBy1, approvals.approvedBy2]
-    .filter(s => s.remarks?.trim())
-    .map(s => `[${s.role}] ${s.remarks}`)
-    .join('\n')
-  const remCell = ws.getCell(r, apCols[4]); remCell.value = combinedRemarks; sc(remCell, { bg: C.approvalBg, border: true })
   r++
 
   // Signature image row

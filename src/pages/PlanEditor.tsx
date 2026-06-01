@@ -104,8 +104,8 @@ export default function PlanEditor() {
   // Auto-fill selfCheckPIC and trPIC from persons data before publishing
   function prepareSelfCheck(sc: SelfCheckTR): SelfCheckTR {
     if (!plan) return sc
-    const picName = autoFillNameForRole('PIC', plan.type, plan.persons)
-    const trName = autoFillNameForRole('PROJECT LEADER', plan.type, plan.persons) || autoFillNameForRole('SUPERVISOR', plan.type, plan.persons)
+    const picName = autoFillNameForRole('PIC', plan.type, plan.persons, plan.personsList)
+    const trName = autoFillNameForRole('PROJECT LEADER', plan.type, plan.persons, plan.personsList) || autoFillNameForRole('SUPERVISOR', plan.type, plan.persons, plan.personsList)
     return {
       ...sc,
       selfCheckPIC: sc.selfCheckPIC || picName,

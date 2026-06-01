@@ -45,6 +45,15 @@ if (!_updateCols.includes('activity_name')) {
 }
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS company_holidays (
+    id         TEXT PRIMARY KEY,
+    date       TEXT NOT NULL,
+    name       TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  )
+`)
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS activity_requests (
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL DEFAULT '',

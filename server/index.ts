@@ -323,6 +323,28 @@ app.delete('/api/requests/:id', (req, res) => {
   res.json({ ok: true })
 })
 
+// ── Company Holidays ──────────────────────────────────────────────────────────
+
+app.get('/api/holidays', (_req, res) => {
+  const rows = (db.prepare('SELECT * FROM company_holidays ORDER BY date ASC').all()) as any[]
+  res.json(rows.map(r => ({ id: r.id, date: r.date, name: r.name, createdAt: r.created_at })))
+})
+
+app.post('/api/holidays', (req, res) => {
+  const { date, name } = req.body
+  if (!date) return res.status(400).json({ error: 'Date is required' })
+  const id = randomUUID()
+  const ts = now()
+  db.prepare('INSERT INTO company_holidays (id, date, name, created_at) VALUES (?, ?, ?, ?)')
+    .run(id, date, name || '', ts)
+  res.json({ id })
+})
+
+app.delete('/api/holidays/:id', (req, res) => {
+  db.prepare('DELETE FROM company_holidays WHERE id = ?').run(req.params.id)
+  res.json({ ok: true })
+})
+
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001
 app.listen(PORT, () => {
   console.log(`Activity Planning API server running on http://localhost:${PORT}`)
