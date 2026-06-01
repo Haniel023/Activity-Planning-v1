@@ -202,7 +202,7 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
             </>
           ) : (
             <>
-              <PersonField label="SMART Member" value={persons.smartMember ?? ''} onChange={v => setPerson('smartMember', v)} readOnly={readOnly} />
+              <PersonField label="PIC" value={persons.smartMember ?? ''} onChange={v => setPerson('smartMember', v)} readOnly={readOnly} />
               <PersonField label="SE" value={persons.se ?? ''} onChange={v => setPerson('se', v)} readOnly={readOnly} />
               <PersonField label="PM" value={persons.pm ?? ''} onChange={v => setPerson('pm', v)} readOnly={readOnly} />
             </>

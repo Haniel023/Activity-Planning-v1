@@ -149,13 +149,31 @@ export default function Dashboard() {
   }, [view])
 
   // ── Plans actions ────────────────────────────────────────────────────────────
-  async function handleSelectType(type: PlanType, prefillTitle?: string, fromRequestId?: string) {
+  async function handleSelectType(
+    type: PlanType,
+    prefillTitle?: string,
+    fromRequestId?: string,
+    prefillTargetDate?: string,
+    prefillPic?: string,
+  ) {
     if (creating) return
     setCreating(true)
     try {
       const plan = createDefaultPlan(type)
       if (prefillTitle) plan.title = prefillTitle
+      if (prefillTargetDate) plan.targetDate = prefillTargetDate
+      if (prefillPic) {
+        // Fill PIC into the relevant persons field
+        if (type === 'development') {
+          ;(plan.persons as any).developer = prefillPic
+        } else {
+          ;(plan.persons as any).smartMember = prefillPic
+        }
+        // Fill Prepared By (approval)
+        plan.approvals.preparedBy.name = prefillPic
+      }
       const selfCheck = createDefaultSelfCheck()
+      if (prefillPic) selfCheck.selfCheckPIC = prefillPic
       const { id } = await api.createPlan(plan, selfCheck)
       if (fromRequestId) {
         await api.updateRequest(fromRequestId, { status: 'in_progress' })
@@ -298,7 +316,7 @@ export default function Dashboard() {
         <PlanTypeModal
           title={`Create Plan from Request`}
           subtitle={`"${makePlanFor.title}" — choose the plan type`}
-          onSelect={type => { handleSelectType(type, makePlanFor.title, makePlanFor.id); setMakePlanFor(null) }}
+          onSelect={type => { handleSelectType(type, makePlanFor.title, makePlanFor.id, makePlanFor.targetDate, makePlanFor.pic); setMakePlanFor(null) }}
           onClose={() => setMakePlanFor(null)}
           creating={creating}
         />
