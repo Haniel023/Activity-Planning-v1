@@ -24,14 +24,25 @@ db.exec(`
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS plan_updates (
-    id         TEXT PRIMARY KEY,
-    plan_id    TEXT NOT NULL,
-    author     TEXT NOT NULL DEFAULT '',
-    message    TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
+    id            TEXT PRIMARY KEY,
+    plan_id       TEXT NOT NULL,
+    author        TEXT NOT NULL DEFAULT '',
+    message       TEXT NOT NULL DEFAULT '',
+    activity_id   TEXT NOT NULL DEFAULT '',
+    activity_name TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL,
     FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
   )
 `)
+
+// Inline migration: add activity columns if they don't exist on existing tables
+const _updateCols = (db.prepare('PRAGMA table_info(plan_updates)').all() as any[]).map((c: any) => c.name)
+if (!_updateCols.includes('activity_id')) {
+  db.exec("ALTER TABLE plan_updates ADD COLUMN activity_id TEXT NOT NULL DEFAULT ''")
+}
+if (!_updateCols.includes('activity_name')) {
+  db.exec("ALTER TABLE plan_updates ADD COLUMN activity_name TEXT NOT NULL DEFAULT ''")
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS activity_requests (

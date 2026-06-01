@@ -62,7 +62,7 @@ function allDates(months: MonthConfig[]): string[] {
 }
 
 // ── Activity Plan Sheet ──────────────────────────────────────────────────────
-export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan) {
+export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan, wb: Workbook) {
   const { months, activities, approvals, type, title, documentVersion, otDays } = plan
   let activityStartRow = 0   // set after all header rows — used for freeze pane
   const dates = allDates(months)
@@ -131,12 +131,45 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan) {
     const c = ws.getCell(r, apCols[i]); c.value = ap?.role ?? ''; sc(c, { bold: true, italic: true, center: true, bg: C.approvalBg, border: true })
     ws.mergeCells(r, apCols[i], r, apCols[i] + 3)
   })
-  // Combine per-slot remarks for the export remarks cell
   const combinedRemarks = [approvals.preparedBy, approvals.reviewedBy, approvals.approvedBy1, approvals.approvedBy2]
     .filter(s => s.remarks?.trim())
     .map(s => `[${s.role}] ${s.remarks}`)
     .join('\n')
   const remCell = ws.getCell(r, apCols[4]); remCell.value = combinedRemarks; sc(remCell, { bg: C.approvalBg, border: true })
+  r++
+
+  // Signature image row
+  ws.getRow(r).height = 45
+  approvers.forEach((ap, i) => {
+    const borderCell = ws.getCell(r, apCols[i])
+    sc(borderCell, { bg: C.approvalBg, border: true })
+    ws.mergeCells(r, apCols[i], r, apCols[i] + 3)
+    if (ap?.signatureImage) {
+      try {
+        const b64 = ap.signatureImage.includes('base64,')
+          ? ap.signatureImage.split('base64,')[1]
+          : ap.signatureImage
+        const imgId = wb.addImage({ base64: b64, extension: 'png' })
+        ws.addImage(imgId, {
+          tl: { col: apCols[i] - 1, row: r - 1 } as any,
+          ext: { width: 100, height: 40 },
+          editAs: 'oneCell',
+        })
+      } catch { /* skip broken image */ }
+    }
+  })
+  ws.getCell(r, apCols[4]).border = BORDER
+  r++
+
+  // Date approved row
+  ws.getRow(r).height = 13
+  approvers.forEach((ap, i) => {
+    const c = ws.getCell(r, apCols[i])
+    c.value = ap?.approvedAt ? new Date(ap.approvedAt).toLocaleDateString('en-CA') : ''
+    sc(c, { center: true, italic: true, bg: C.approvalBg, border: true, fontColor: 'FF6B7280' })
+    ws.mergeCells(r, apCols[i], r, apCols[i] + 3)
+  })
+  ws.getCell(r, apCols[4]).border = BORDER
   r++
 
   // ── Main column header ────────────────────────────────────────────────────
@@ -378,7 +411,7 @@ export async function exportToExcel(plan: ActivityPlan, sc3: SelfCheckTR): Promi
 
   const planSheetName = plan.type === 'development' ? 'Activity Plan(Development)' : 'Activity Plan(Support)'
   const planWS = wb.addWorksheet(planSheetName, { views: [], properties: { defaultRowHeight: 13 } })
-  await buildActivityPlanSheet(planWS, plan)
+  await buildActivityPlanSheet(planWS, plan, wb)
 
   const scWS = wb.addWorksheet('Self Check TR', { properties: { defaultRowHeight: 13 } })
   await buildSelfCheckSheet(scWS, sc3)

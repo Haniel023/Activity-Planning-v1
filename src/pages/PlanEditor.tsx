@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { ActivityPlan, SelfCheckTR } from '../types'
 import { createDefaultSelfCheck, autoFillNameForRole } from '../utils'
 import { exportToPDF } from '../pdfExporter'
+import { exportToExcel } from '../exporter'
 import { api } from '../api'
 import PlanHeader from '../components/PlanHeader'
 import ApprovalSection from '../components/ApprovalSection'
@@ -32,6 +33,7 @@ export default function PlanEditor() {
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportingExcel, setExportingExcel] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [showVersionUp, setShowVersionUp] = useState(false)
@@ -181,6 +183,12 @@ export default function PlanEditor() {
     setExporting(true)
     try { await exportToPDF(plan, selfCheck) } finally { setExporting(false) }
   }, [plan, selfCheck, exporting])
+
+  const handleExportExcel = useCallback(async () => {
+    if (!plan || !selfCheck || exportingExcel) return
+    setExportingExcel(true)
+    try { await exportToExcel(plan, selfCheck) } finally { setExportingExcel(false) }
+  }, [plan, selfCheck, exportingExcel])
 
   async function handleSaveProgress() {
     if (!plan || saving) return
@@ -352,12 +360,20 @@ export default function PlanEditor() {
               </button>
             )}
 
-            {/* Export always visible */}
+            {/* Export PDF */}
             <button onClick={handleExport} disabled={exporting} className={`flex items-center gap-1.5 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors shadow-sm ${exporting ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              {exporting ? 'Exporting...' : 'Export PDF'}
+              {exporting ? 'Exporting...' : 'PDF'}
+            </button>
+
+            {/* Export Excel */}
+            <button onClick={handleExportExcel} disabled={exportingExcel} className={`flex items-center gap-1.5 text-white text-xs font-medium px-3 py-2 rounded-lg transition-colors shadow-sm ${exportingExcel ? 'bg-teal-400 cursor-not-allowed' : 'bg-teal-600 hover:bg-teal-700'}`}>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              {exportingExcel ? 'Exporting...' : 'Excel'}
             </button>
           </div>
         </div>
@@ -425,7 +441,7 @@ export default function PlanEditor() {
                   </button>
                 </div>
                 <div className="flex-1 overflow-hidden p-3">
-                  <UpdatesLog planId={plan.id} canPost={allApproved} />
+                  <UpdatesLog planId={plan.id} canPost={allApproved} activities={plan.activities} />
                 </div>
               </aside>
             )}

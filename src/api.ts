@@ -160,11 +160,11 @@ export const api = {
     return req(`${BASE}/plans/${planId}/updates`)
   },
 
-  async postUpdate(planId: string, author: string, message: string): Promise<{ id: string; createdAt: string }> {
+  async postUpdate(planId: string, author: string, message: string, activityId?: string, activityName?: string): Promise<{ id: string; createdAt: string }> {
     return req(`${BASE}/plans/${planId}/updates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ author, message }),
+      body: JSON.stringify({ author, message, activityId: activityId || '', activityName: activityName || '' }),
     })
   },
 

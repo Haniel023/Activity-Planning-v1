@@ -247,6 +247,8 @@ app.get('/api/plans/:id/updates', (req, res) => {
     planId: r.plan_id,
     author: r.author,
     message: r.message,
+    activityId: r.activity_id || '',
+    activityName: r.activity_name || '',
     createdAt: r.created_at,
   })))
 })
@@ -259,13 +261,13 @@ app.post('/api/plans/:id/updates', (req, res) => {
     .every((k: string) => data.approvals?.[k]?.signatureImage)
   if (!allApproved) return res.status(403).json({ error: 'Updates only allowed on fully approved plans' })
 
-  const { author, message } = req.body
+  const { author, message, activityId, activityName } = req.body
   if (!message?.trim()) return res.status(400).json({ error: 'Message is required' })
   const id = randomUUID()
   const ts = now()
   db.prepare(
-    'INSERT INTO plan_updates (id, plan_id, author, message, created_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(id, req.params.id, author || 'Anonymous', message.trim(), ts)
+    'INSERT INTO plan_updates (id, plan_id, author, message, activity_id, activity_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, req.params.id, author || 'Anonymous', message.trim(), activityId || '', activityName || '', ts)
   res.json({ id, createdAt: ts })
 })
 

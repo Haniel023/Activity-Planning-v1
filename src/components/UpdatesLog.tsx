@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import type { ProgressUpdate } from '../types'
+import type { ProgressUpdate, ActivityRow } from '../types'
 import { api } from '../api'
 
 interface Props {
   planId: string
-  canPost: boolean   // true only when fully approved
+  canPost: boolean
+  activities?: ActivityRow[]
 }
 
 function timeAgo(iso: string): string {
@@ -26,16 +27,20 @@ function formatDateTime(iso: string): string {
   })
 }
 
-export default function UpdatesLog({ planId, canPost }: Props) {
+export default function UpdatesLog({ planId, canPost, activities = [] }: Props) {
   const [updates, setUpdates]   = useState<ProgressUpdate[]>([])
   const [loading, setLoading]   = useState(true)
   const [author, setAuthor]     = useState(() => localStorage.getItem('ap_author') ?? '')
   const [message, setMessage]   = useState('')
+  const [selectedActivityId, setSelectedActivityId] = useState('')
   const [posting, setPosting]   = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [confirmDel, setConfirmDel] = useState<ProgressUpdate | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Non-phase activities only, for the dropdown
+  const activityOptions = activities.filter(a => !a.isPhase && a.name.trim())
 
   useEffect(() => {
     setLoading(true)
@@ -44,7 +49,6 @@ export default function UpdatesLog({ planId, canPost }: Props) {
       .finally(() => setLoading(false))
   }, [planId])
 
-  // Scroll to bottom when new update is added
   useEffect(() => {
     if (!loading) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [updates.length, loading])
@@ -55,10 +59,22 @@ export default function UpdatesLog({ planId, canPost }: Props) {
     setPosting(true)
     setPostError(null)
     try {
-      const { id, createdAt } = await api.postUpdate(planId, author.trim(), message.trim())
-      const newUpdate: ProgressUpdate = { id, planId, author: author.trim(), message: message.trim(), createdAt }
+      const selectedAct = activityOptions.find(a => a.id === selectedActivityId)
+      const { id, createdAt } = await api.postUpdate(
+        planId, author.trim(), message.trim(),
+        selectedAct?.id, selectedAct?.name,
+      )
+      const newUpdate: ProgressUpdate = {
+        id, planId,
+        author: author.trim(),
+        message: message.trim(),
+        activityId: selectedAct?.id ?? '',
+        activityName: selectedAct?.name ?? '',
+        createdAt,
+      }
       setUpdates(prev => [...prev, newUpdate])
       setMessage('')
+      setSelectedActivityId('')
       localStorage.setItem('ap_author', author.trim())
     } catch (e) {
       setPostError((e as Error).message)
@@ -140,6 +156,17 @@ export default function UpdatesLog({ planId, canPost }: Props) {
                     </span>
                   </div>
                 )}
+                {/* Activity tag */}
+                {u.activityName && (
+                  <div className="mb-1">
+                    <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full leading-none font-medium">
+                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      {u.activityName}
+                    </span>
+                  </div>
+                )}
                 <div className="relative bg-white border border-gray-200 rounded-xl rounded-tl-sm px-3 py-2.5 shadow-sm group-hover:border-gray-300 transition-colors">
                   <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{u.message}</p>
                   {!isFirst && (
@@ -197,6 +224,23 @@ export default function UpdatesLog({ planId, canPost }: Props) {
               onChange={e => setAuthor(e.target.value)}
             />
           </div>
+
+          {/* Activity selector */}
+          {activityOptions.length > 0 && (
+            <div>
+              <select
+                className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white text-gray-600"
+                value={selectedActivityId}
+                onChange={e => setSelectedActivityId(e.target.value)}
+              >
+                <option value="">— General update (no specific activity) —</option>
+                {activityOptions.map(a => (
+                  <option key={a.id} value={a.id}>{a.number ? `${a.number} ` : ''}{a.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <textarea
             rows={3}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none placeholder:text-gray-400"

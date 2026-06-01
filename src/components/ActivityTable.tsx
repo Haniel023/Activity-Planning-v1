@@ -5,6 +5,7 @@ import {
   daysInMonth, toDateStr, monthLabel, STATUS_OPTIONS, makePICEntry,
   getNextPhaseNumber, getNextSubNumber, getPersonRoles, calcAutoProgress,
 } from '../utils'
+import { getHoliday, isHoliday } from '../holidays'
 
 // Auto-sizing textarea — expands vertically as text wraps
 function AutoTextarea({ value, onChange, className, disabled }: {
@@ -49,7 +50,6 @@ function buildWeekGroups(months: MonthConfig[]): WeekGroup[] {
   return groups
 }
 
-// Uniform border for all calendar body cells — no width variation to avoid border-collapse artifacts.
 function dayCellBorder(_date: string): string {
   return 'border border-gray-200'
 }
@@ -61,17 +61,23 @@ const STATUS_COLOR: Record<string, string> = {
   'NOT YET STARTED': 'text-gray-500', 'ONGOING': 'text-blue-600', 'DONE': 'text-green-600', 'ON HOLD': 'text-amber-600',
 }
 
+interface GhostState {
+  rowId: string
+  dates: Set<string>
+}
+
 interface Props {
   plan: ActivityPlan
   onChange: (plan: ActivityPlan) => void
   readOnly?: boolean
-  partialEdit?: boolean   // all approvals done: only actual marks + status are editable
+  partialEdit?: boolean
 }
 
 export default function ActivityTable({ plan, onChange, readOnly, partialEdit }: Props) {
   const { activities, months, otDays } = plan
   const [viewMode, setViewMode] = useState<ViewMode>('daily')
   const [showRaciInfo, setShowRaciInfo] = useState(false)
+  const [ghostState, setGhostState] = useState<GhostState | null>(null)
 
   const allDays = useMemo(() => {
     const days: string[] = []
@@ -126,7 +132,6 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
     updateRow(rowId, { picEntries: row.picEntries.map(e => e.id === entryId ? { ...e, ...changes } : e) })
   }
 
-  // Count plan-marked days and auto-update workingDays
   function toggleDay(rowId: string, date: string, type: 'plan' | 'actual') {
     updateActivities(activities.map(a => {
       if (a.id !== rowId) return a
@@ -157,6 +162,47 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
     onChange({ ...plan, otDays: otSet.has(date) ? plan.otDays.filter(d => d !== date) : [...plan.otDays, date] })
   }
 
+  // ── MH-based date suggestion ─────────────────────────────────────────────────
+
+  function computeSuggestion(row: ActivityRow): Set<string> | null {
+    if (!row.mh || row.mh <= 0) return null
+    const needed = Math.max(1, Math.ceil(row.mh / 8))
+    const mm = new Map(row.dayMarks.map(m => [m.date, m]))
+    const markedDays = allDays.filter(d => mm.get(d)?.plan)
+    const lastMarked = markedDays.length > 0 ? markedDays[markedDays.length - 1] : null
+    const today = new Date().toISOString().split('T')[0]
+    const startFrom = lastMarked ?? today
+
+    const result: string[] = []
+    for (const date of allDays) {
+      if (date <= startFrom) continue
+      if (isHoliday(date) || (isWeekend(date) && !otSet.has(date))) continue
+      result.push(date)
+      if (result.length >= needed) break
+    }
+    return result.length > 0 ? new Set(result) : null
+  }
+
+  function applyGhost() {
+    if (!ghostState) return
+    const row = activities.find(a => a.id === ghostState.rowId)
+    if (!row) { setGhostState(null); return }
+
+    const newMarks = [...row.dayMarks]
+    const existing = new Map(newMarks.map((m, i) => [m.date, i]))
+    for (const date of ghostState.dates) {
+      const idx = existing.get(date)
+      if (idx !== undefined) {
+        newMarks[idx] = { ...newMarks[idx], plan: true }
+      } else {
+        newMarks.push({ date, plan: true, actual: false })
+      }
+    }
+    const workingDays = newMarks.filter(m => m.plan).length
+    updateActivities(activities.map(a => a.id === ghostState.rowId ? { ...a, dayMarks: newMarks, workingDays } : a))
+    setGhostState(null)
+  }
+
   const nonPhase = activities.filter(a => !a.isPhase)
   const totalMH = nonPhase.reduce((s, a) => s + a.mh, 0)
   const doneMH = nonPhase.filter(a => a.status === 'DONE').reduce((s, a) => s + a.mh, 0)
@@ -177,6 +223,8 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
       }])
     }
   }
+
+  const ghostRow = ghostState ? activities.find(a => a.id === ghostState.rowId) : null
 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -225,11 +273,38 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-400 flex-shrink-0">
           <span><span className="text-blue-600 font-bold">○</span> Plan &nbsp;<span className="text-orange-500 font-bold">●</span> Actual</span>
-          {viewMode === 'daily' && <span className="hidden lg:inline">Click <span className="font-medium text-gray-500">Sa/Su</span> header → <span className="text-amber-600 font-semibold">OT</span></span>}
+          <span className="hidden md:inline">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm bg-orange-100 border border-orange-200 mr-1" />
+            <span className="text-orange-500">PH Holiday</span>
+          </span>
+          {viewMode === 'daily' && <span className="hidden lg:inline">Click <span className="font-medium text-gray-500">Sa/Su</span> → <span className="text-amber-600 font-semibold">OT</span></span>}
           {viewMode === 'weekly' && <span className="hidden lg:inline">Click week = mark all weekdays · Days auto-count</span>}
           <span className="font-medium text-gray-600">MH: {totalMH.toFixed(1)} | {progress.toFixed(1)}%</span>
         </div>
       </div>
+
+      {/* Ghost suggestion banner */}
+      {ghostState && ghostRow && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border-b border-blue-200 text-xs flex-shrink-0">
+          <span className="text-blue-600 font-medium">
+            ○ Suggesting <strong>{ghostState.dates.size}</strong> working day{ghostState.dates.size !== 1 ? 's' : ''} for
+            <span className="mx-1 italic">"{ghostRow.name || 'this activity'}"</span>
+            (based on {ghostRow.mh}h MH)
+          </span>
+          <button
+            onClick={applyGhost}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg transition-colors font-medium"
+          >
+            Apply
+          </button>
+          <button
+            onClick={() => setGhostState(null)}
+            className="text-gray-500 hover:text-gray-700 px-2 py-1"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-auto flex-1">
@@ -271,30 +346,47 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
               {Array.from({ length: 5 }).map((_, i) => <th key={i} className="border border-gray-200 bg-gray-100" />)}
               {viewMode === 'daily'
                 ? allDays.map(date => {
-                    const wknd = isWeekend(date); const isOT = otSet.has(date)
-                    // Weekday cells: bg-white (clearly distinct from weekend bg-gray-200)
+                    const wknd = isWeekend(date)
+                    const isOT = otSet.has(date)
+                    const holiday = !wknd ? getHoliday(date) : undefined
+                    const isFirstOfMonth = dayNumber(date) === 1
+
+                    let bg: string
+                    let textColor: string
+                    if (wknd) {
+                      bg = isOT ? 'bg-amber-100 cursor-pointer hover:bg-amber-200' : 'bg-gray-300 cursor-pointer hover:bg-gray-400'
+                      textColor = isOT ? 'text-amber-700' : 'text-gray-500'
+                    } else if (holiday) {
+                      bg = 'bg-orange-50'
+                      textColor = 'text-orange-600'
+                    } else if (isFirstOfMonth) {
+                      bg = 'bg-blue-100'
+                      textColor = 'text-blue-600'
+                    } else {
+                      bg = 'bg-gray-50'
+                      textColor = 'text-gray-500'
+                    }
+
+                    const titleText = holiday
+                      ? `${date} — 🇵🇭 ${holiday.name}`
+                      : wknd
+                        ? isOT ? `${date} — OT enabled (click to disable)` : `${date} — Weekend (click to enable OT)`
+                        : date
+
                     return (
                       <th key={date}
-                        className={[
-                          'border border-gray-200 text-center w-6 px-0 select-none',
-                          wknd
-                            ? isOT
-                              ? 'bg-amber-100 cursor-pointer hover:bg-amber-200'
-                              : 'bg-gray-300 cursor-pointer hover:bg-gray-400'
-                            : dayNumber(date) === 1
-                              ? 'bg-blue-100'   // first day of month — clear visual marker
-                              : 'bg-gray-50',
-                        ].join(' ')}
+                        className={`border border-gray-200 text-center w-6 px-0 select-none ${bg}`}
                         onClick={wknd && !readOnly && !partialEdit ? () => toggleOTDay(date) : undefined}
-                        title={wknd ? (isOT ? `${date} — OT enabled (click to disable)` : `${date} — Weekend (click to enable OT)`) : date}
+                        title={titleText}
                       >
-                        <div className={`text-[9px] leading-tight font-medium ${wknd ? (isOT ? 'text-amber-700' : 'text-gray-500') : dayNumber(date) === 1 ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <div className={`text-[9px] leading-tight font-medium ${textColor}`}>
                           {dayOfWeekAbbr(date)}
                         </div>
-                        <div className={`text-[10px] leading-tight font-semibold ${wknd ? (isOT ? 'text-amber-800' : 'text-gray-600') : dayNumber(date) === 1 ? 'text-blue-700' : 'text-gray-800'}`}>
+                        <div className={`text-[10px] leading-tight font-semibold ${wknd ? (isOT ? 'text-amber-800' : 'text-gray-600') : holiday ? 'text-orange-700' : isFirstOfMonth ? 'text-blue-700' : 'text-gray-800'}`}>
                           {dayNumber(date)}
                         </div>
                         {wknd && isOT && <div className="text-[8px] text-amber-600 font-bold">OT</div>}
+                        {holiday && <div className="text-[7px] text-orange-500 font-bold leading-tight truncate px-0.5">PH</div>}
                       </th>
                     )
                   })
@@ -318,6 +410,7 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
                 picListId={`pl-${row.id}`}
                 readOnly={readOnly}
                 partialEdit={partialEdit}
+                ghostDates={ghostState?.rowId === row.id ? ghostState.dates : null}
                 onChange={changes => (readOnly || partialEdit) ? undefined : updateRow(row.id, changes)}
                 onChangeStatus={status => !readOnly && updateRow(row.id, { status })}
                 onDelete={() => deleteRow(row.id)}
@@ -327,6 +420,10 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
                 onUpdatePIC={(id, c) => updatePICEntry(row.id, id, c)}
                 onToggleDay={(date, type) => readOnly ? undefined : toggleDay(row.id, date, type)}
                 onToggleWeek={(dates, type) => readOnly ? undefined : toggleWeekGroup(row.id, dates, type)}
+                onSuggest={() => {
+                  const sugg = computeSuggestion(row)
+                  if (sugg) setGhostState({ rowId: row.id, dates: sugg })
+                }}
               />
             ))}
           </tbody>
@@ -372,7 +469,6 @@ function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
 
   return (
     <div ref={wrapRef} className="relative w-full">
-      {/* Trigger */}
       <button
         type="button"
         onClick={() => { setOpen(!open); setSearch('') }}
@@ -389,10 +485,8 @@ function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
         </svg>
       </button>
 
-      {/* Dropdown panel */}
       {open && (
         <div className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-200 rounded-xl shadow-xl w-44 overflow-hidden">
-          {/* Search */}
           <div className="p-1.5 border-b border-gray-100">
             <input
               autoFocus
@@ -402,7 +496,6 @@ function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-          {/* Options */}
           <div className="py-1 max-h-40 overflow-y-auto">
             {filtered.map(role => {
               const c = ROLE_CHIP[role]
@@ -425,7 +518,6 @@ function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
               <p className="text-xs text-gray-400 text-center py-2">No match</p>
             )}
           </div>
-          {/* Clear / delete */}
           <div className="border-t border-gray-100 p-1 flex gap-1">
             {value && (
               <button type="button"
@@ -453,17 +545,18 @@ function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
 interface RowProps {
   row: ActivityRow; allDays: string[]; weekGroups: WeekGroup[]; otSet: Set<string>
   viewMode: ViewMode; personRoles: string[]; picListId: string; readOnly?: boolean; partialEdit?: boolean
+  ghostDates?: Set<string> | null
   onChange: (c: Partial<ActivityRow>) => void | undefined
   onChangeStatus: (status: ActivityRow['status']) => void
   onDelete: () => void; onAddActivity: () => void
   onAddPIC: () => void; onDeletePIC: (id: string) => void; onUpdatePIC: (id: string, c: Partial<PICEntry>) => void
   onToggleDay: (date: string, type: 'plan' | 'actual') => void | undefined
   onToggleWeek: (dates: string[], type: 'plan' | 'actual') => void | undefined
+  onSuggest: () => void
 }
 
 function ActivityRowUI(p: RowProps) {
   const { row, allDays, weekGroups, otSet, viewMode, personRoles } = p
-  // In partialEdit mode, only actual marks and status are editable
   const fieldLocked = p.readOnly || p.partialEdit
 
   const markMap = useMemo(() => {
@@ -488,7 +581,7 @@ function ActivityRowUI(p: RowProps) {
         </td>
         {viewMode === 'daily'
           ? allDays.map(date => (
-              <td key={date} className={`w-6 ${isWeekend(date) ? 'bg-gray-100' : 'bg-blue-50'} ${dayCellBorder(date)}`} />
+              <td key={date} className={`w-6 ${isWeekend(date) ? 'bg-gray-100' : isHoliday(date) ? 'bg-orange-50' : 'bg-blue-50'} ${dayCellBorder(date)}`} />
             ))
           : weekGroups.map((_wg, i) => <td key={i} className="border border-gray-200 w-10 bg-blue-50" />)
         }
@@ -500,18 +593,32 @@ function ActivityRowUI(p: RowProps) {
   }
 
   const dayCell = (date: string, type: 'plan' | 'actual') => {
-    const wknd = isWeekend(date); const isOT = otSet.has(date); const locked = wknd && !isOT
-    const mark = markMap.get(date); const active = type === 'plan' ? mark?.plan : mark?.actual
+    const wknd = isWeekend(date)
+    const isOT = otSet.has(date)
+    const locked = wknd && !isOT
+    const mark = markMap.get(date)
+    const active = type === 'plan' ? mark?.plan : mark?.actual
+    const isGhost = type === 'plan' && !!p.ghostDates?.has(date) && !active
     const sym = type === 'plan' ? '○' : '●'
     const symColor = type === 'plan' ? 'text-blue-600' : 'text-orange-500'
     const hoverBg = type === 'plan' ? 'hover:bg-blue-50' : 'hover:bg-orange-50'
     const planLocked = locked || p.readOnly || (p.partialEdit && type === 'plan')
     const actualLocked = locked || p.readOnly
     const cellLocked = type === 'plan' ? planLocked : actualLocked
-    const bg = cellLocked ? 'bg-gray-100 cursor-not-allowed' : wknd ? `bg-amber-50 ${hoverBg}` : `bg-white ${hoverBg}`
+
+    const holidayDay = !wknd ? isHoliday(date) : false
+    const bg = cellLocked
+      ? (wknd ? 'bg-gray-100 cursor-not-allowed' : holidayDay ? 'bg-orange-50/60 cursor-not-allowed' : 'bg-gray-100 cursor-not-allowed')
+      : holidayDay
+        ? `bg-orange-50 ${hoverBg}`
+        : wknd
+          ? `bg-amber-50 ${hoverBg}`
+          : `bg-white ${hoverBg}`
+
     return (
       <td key={date} className={`text-center w-6 ${cellLocked ? bg : `cursor-pointer ${bg}`} ${dayCellBorder(date)}`}
         onClick={cellLocked ? undefined : () => p.onToggleDay(date, type)}>
+        {isGhost && <span className="font-bold text-sm leading-none text-blue-200 select-none">○</span>}
         {active && <span className={`font-bold text-sm leading-none ${symColor}`}>{sym}</span>}
       </td>
     )
@@ -519,23 +626,24 @@ function ActivityRowUI(p: RowProps) {
 
   const weekCell = (wg: WeekGroup, type: 'plan' | 'actual') => {
     const anyMarked = wg.dates.some(d => type === 'plan' ? markMap.get(d)?.plan : markMap.get(d)?.actual)
-    const sym = type === 'plan' ? '○' : '●'; const symColor = type === 'plan' ? 'text-blue-600' : 'text-orange-500'
+    const hasGhost = type === 'plan' && wg.dates.some(d => p.ghostDates?.has(d) && !markMap.get(d)?.plan)
+    const sym = type === 'plan' ? '○' : '●'
+    const symColor = type === 'plan' ? 'text-blue-600' : 'text-orange-500'
     return (
       <td key={`${wg.monthLabel}-${wg.weekLabel}`}
         className={`border border-gray-200 text-center w-10 bg-white ${(p.readOnly || (p.partialEdit && type === 'plan')) ? 'cursor-default' : `cursor-pointer ${type === 'plan' ? 'hover:bg-blue-50' : 'hover:bg-orange-50'}`}`}
         onClick={(p.readOnly || (p.partialEdit && type === 'plan')) ? undefined : () => p.onToggleWeek(wg.dates, type)}>
+        {hasGhost && !anyMarked && <span className="font-bold text-sm leading-none text-blue-200 select-none">○</span>}
         {anyMarked && <span className={`font-bold text-sm leading-none ${symColor}`}>{sym}</span>}
       </td>
     )
   }
 
-  // Stacked PIC + RACI entries — rendered inside a single merged cell (colSpan=5, rowSpan=2)
   const picRaciCell = (
     <td className="border border-gray-200 px-1 py-0.5 align-top" colSpan={5} rowSpan={2}>
       <div className="space-y-0.5">
         {row.picEntries.map(entry => (
           <div key={entry.id} className="flex items-center gap-1">
-            {/* PIC selector — fixed width matches PIC column (w-20) */}
             <div className="w-20 shrink-0">
               {fieldLocked ? (
                 <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border block truncate ${ROLE_CHIP[entry.pic]?.bg ?? 'bg-gray-50'} ${ROLE_CHIP[entry.pic]?.text ?? 'text-gray-500'} ${ROLE_CHIP[entry.pic]?.border ?? 'border-gray-200'}`}>
@@ -551,7 +659,6 @@ function ActivityRowUI(p: RowProps) {
                 />
               )}
             </div>
-            {/* RACI checkboxes — each w-5 to match R/A/C/I column widths */}
             {(['r','a','c','i'] as (keyof RACI)[]).map(k => (
               <div key={k} className="w-5 shrink-0 flex justify-center">
                 <input
@@ -564,7 +671,6 @@ function ActivityRowUI(p: RowProps) {
                 />
               </div>
             ))}
-            {/* Remove this PIC entry — only when multiple entries exist */}
             {!p.readOnly && !p.partialEdit && row.picEntries.length > 1 && (
               <button onClick={() => p.onDeletePIC(entry.id)} className="text-gray-300 hover:text-red-400 text-[10px]" title="Remove PIC">✕</button>
             )}
@@ -579,7 +685,7 @@ function ActivityRowUI(p: RowProps) {
 
   return (
     <>
-      {/* Plan row — fixed cols span both Plan + Actual rows; PIC+RACI merged cell also spans both */}
+      {/* Plan row */}
       <tr className="hover:bg-gray-50">
         <td className="border border-gray-200 px-1 py-0.5 sticky left-0 bg-white z-10 align-top" rowSpan={2}>
           <input className="w-8 bg-transparent text-xs text-gray-600 focus:outline-none disabled:pointer-events-none" disabled={fieldLocked} value={row.number} onChange={e => p.onChange({ number: e.target.value })} />
@@ -593,18 +699,18 @@ function ActivityRowUI(p: RowProps) {
           />
         </td>
 
-        {/* PIC + RACI stacked — spans both Plan and Actual rows */}
         {picRaciCell}
 
-        {/* Status / % / MH / Days — span both rows */}
+        {/* Status */}
         <td className="border border-gray-200 px-0.5 py-0.5 align-top" rowSpan={2}>
-          {/* Status editable even in partialEdit */}
           <select className={`w-full text-xs bg-transparent focus:outline-none font-medium ${STATUS_COLOR[row.status] ?? 'text-gray-500'} disabled:pointer-events-none`}
             value={row.status} title={row.status} disabled={p.readOnly}
             onChange={e => p.onChangeStatus(e.target.value as ActivityRow['status'])}>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_SHORT[s]}</option>)}
           </select>
         </td>
+
+        {/* Progress % */}
         <td className="border border-gray-200 px-0 py-0.5 align-top" rowSpan={2}>
           {p.partialEdit || row.autoProgress !== false ? (
             <div className="flex flex-col items-center">
@@ -625,20 +731,33 @@ function ActivityRowUI(p: RowProps) {
             </div>
           )}
         </td>
+
+        {/* MH — with Suggest button */}
         <td className="border border-gray-200 px-0 py-0.5 align-top" rowSpan={2}>
           <input type="number" min={0} step={0.5} className="w-full text-xs bg-transparent focus:outline-none text-center text-gray-600 disabled:pointer-events-none"
             disabled={fieldLocked} value={row.mh} onChange={e => p.onChange({ mh: Number(e.target.value) })} />
+          {!fieldLocked && row.mh > 0 && viewMode === 'daily' && (
+            <button
+              onClick={p.onSuggest}
+              title={`Auto-suggest ${Math.ceil(row.mh / 8)} working day(s) from MH`}
+              className="text-[8px] text-blue-400 hover:text-blue-600 font-semibold leading-none block w-full text-center mt-0.5 transition-colors"
+            >
+              ✦ plot
+            </button>
+          )}
         </td>
+
+        {/* Working days */}
         <td className="border border-gray-200 px-0 py-0.5 align-top" rowSpan={2} title="Auto-counted from Plan marks.">
           <input type="number" min={0} className="w-full text-xs bg-transparent focus:outline-none text-center text-blue-600 font-medium disabled:pointer-events-none"
             disabled={fieldLocked} value={row.workingDays} onChange={e => p.onChange({ workingDays: Number(e.target.value) })} />
         </td>
 
-        {/* Plan label + clickable calendar cells — plan marks locked in partialEdit */}
+        {/* Plan label + calendar */}
         <td className="border border-gray-200 px-0.5 py-0.5 text-center text-blue-600 font-semibold text-xs whitespace-nowrap bg-blue-50">Plan</td>
         {viewMode === 'daily' ? allDays.map(date => dayCell(date, 'plan')) : weekGroups.map(wg => weekCell(wg, 'plan'))}
 
-        {/* Actions — hidden in partialEdit */}
+        {/* Actions */}
         <td className="border border-gray-200 px-0.5 py-0.5 text-center align-top" rowSpan={2}>
           {!p.readOnly && !p.partialEdit && (
             <div className="flex flex-col items-center gap-0.5">
@@ -649,7 +768,7 @@ function ActivityRowUI(p: RowProps) {
         </td>
       </tr>
 
-      {/* Actual row — only Actual label + clickable calendar cells (all other cols covered by rowSpan above) */}
+      {/* Actual row */}
       <tr className="hover:bg-gray-50">
         <td className="border border-gray-200 px-0.5 py-0.5 text-center text-orange-500 font-semibold text-xs whitespace-nowrap bg-orange-50">Actual</td>
         {viewMode === 'daily' ? allDays.map(date => dayCell(date, 'actual')) : weekGroups.map(wg => weekCell(wg, 'actual'))}

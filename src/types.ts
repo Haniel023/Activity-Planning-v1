@@ -149,6 +149,8 @@ export interface ProgressUpdate {
   planId: string
   author: string
   message: string
+  activityId?: string
+  activityName?: string
   createdAt: string
 }
 
