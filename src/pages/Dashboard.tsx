@@ -182,8 +182,8 @@ export default function Dashboard() {
         setRequests(prev => prev.map(r => r.id === fromRequestId ? { ...r, status: 'in_progress' } : r))
       }
       navigate(`/plan/${id}`)
-    } catch {
-      alert('Failed to create plan. Is the server running?')
+    } catch (e) {
+      alert(`Failed to create plan: ${(e as Error).message}`)
       setCreating(false)
     }
   }
