@@ -60,6 +60,7 @@ export interface ActivityRow {
   progress: number
   autoProgress?: boolean
   mh: number
+  hoursPerDay?: number   // hours allocated per day for this activity (default 8)
   workingDays: number
   dayMarks: DayMark[]
 }

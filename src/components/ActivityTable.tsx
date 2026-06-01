@@ -195,13 +195,15 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
     onChange({ ...plan, otDays: otSet.has(date) ? plan.otDays.filter(d => d !== date) : [...plan.otDays, date] })
   }
 
-  // ── Dynamic MH plotting ──────────────────────────────────────────────────────
+  // ── Dynamic MH / hours-per-day plotting ─────────────────────────────────────
 
-  const handleMHChange = useCallback((rowId: string, newMH: number) => {
-    const row = activities.find(a => a.id === rowId)
-    if (!row) return
-
-    const needed = newMH > 0 ? Math.max(1, Math.ceil(newMH / 8)) : 0
+  function doAutoPlot(
+    row: ActivityRow,
+    newMH: number,
+    newHPD: number,
+  ): ActivityRow {
+    const hpd = newHPD > 0 ? newHPD : 8
+    const needed = newMH > 0 ? Math.max(1, Math.ceil(newMH / hpd)) : 0
     const mm = new Map(row.dayMarks.map(m => [m.date, m]))
     const markedPlanDays = allDays.filter(d => mm.get(d)?.plan)
     const currentCount = markedPlanDays.length
@@ -237,7 +239,21 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
     }
 
     const workingDays = newMarks.filter(m => m.plan).length
-    updateActivities(activities.map(a => a.id === rowId ? { ...a, mh: newMH, dayMarks: newMarks, workingDays } : a))
+    return { ...row, mh: newMH, hoursPerDay: hpd, dayMarks: newMarks, workingDays }
+  }
+
+  const handleMHChange = useCallback((rowId: string, newMH: number) => {
+    const row = activities.find(a => a.id === rowId)
+    if (!row) return
+    const updated = doAutoPlot(row, newMH, row.hoursPerDay ?? 8)
+    updateActivities(activities.map(a => a.id === rowId ? updated : a))
+  }, [activities, allDays, otSet, companyHolidayMap]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleHPDChange = useCallback((rowId: string, newHPD: number) => {
+    const row = activities.find(a => a.id === rowId)
+    if (!row) return
+    const updated = doAutoPlot(row, row.mh, newHPD)
+    updateActivities(activities.map(a => a.id === rowId ? updated : a))
   }, [activities, allDays, otSet, companyHolidayMap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const nonPhase = activities.filter(a => !a.isPhase)
@@ -349,7 +365,7 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
               </th>
               <th className="border border-gray-200 px-1 py-1.5 text-center bg-gray-100 text-gray-600 w-16">Status</th>
               <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-8">%</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10">MH</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10" title="Man-hours · h/d = hours per day allocated">MH</th>
               <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-8 whitespace-nowrap" title="Auto-counted from Plan marks">Days</th>
               <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10">Sched.</th>
               {monthGroups.map(({ label, span }) => (
@@ -441,6 +457,7 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
                 onToggleDay={(date, type) => readOnly ? undefined : toggleDay(row.id, date, type)}
                 onToggleWeek={(dates, type) => readOnly ? undefined : toggleWeekGroup(row.id, dates, type)}
                 onMHChange={newMH => handleMHChange(row.id, newMH)}
+                onHPDChange={newHPD => handleHPDChange(row.id, newHPD)}
               />
             ))}
           </tbody>
@@ -538,6 +555,7 @@ interface RowProps {
   onToggleDay: (date: string, type: 'plan' | 'actual') => void | undefined
   onToggleWeek: (dates: string[], type: 'plan' | 'actual') => void | undefined
   onMHChange: (newMH: number) => void
+  onHPDChange: (newHPD: number) => void
 }
 
 function ActivityRowUI(p: RowProps) {
@@ -695,16 +713,22 @@ function ActivityRowUI(p: RowProps) {
           )}
         </td>
 
-        {/* MH — auto-plots on change */}
-        <td className="border border-gray-200 px-0 py-0.5 align-top" rowSpan={2}>
+        {/* MH + h/d — auto-plots on change */}
+        <td className="border border-gray-200 px-0 py-0.5 align-middle text-center" rowSpan={2}>
           <input type="number" min={0} step={0.5}
             className="w-full text-xs bg-transparent focus:outline-none text-center text-gray-600 disabled:pointer-events-none"
+            title="Man-hours for this activity"
             disabled={fieldLocked} value={row.mh}
-            onChange={e => {
-              const val = Number(e.target.value)
-              if (!fieldLocked) p.onMHChange(val)
-            }}
+            onChange={e => { if (!fieldLocked) p.onMHChange(Number(e.target.value)) }}
           />
+          <div className="flex items-center justify-center gap-0.5 mt-0.5" title="Hours allocated per day for this activity">
+            <input type="number" min={0.5} max={24} step={0.5}
+              className="w-7 text-[9px] bg-transparent focus:outline-none text-center text-purple-500 font-medium disabled:pointer-events-none"
+              disabled={fieldLocked} value={row.hoursPerDay ?? 8}
+              onChange={e => { if (!fieldLocked) p.onHPDChange(Number(e.target.value)) }}
+            />
+            <span className="text-[8px] text-gray-400 select-none">h/d</span>
+          </div>
         </td>
 
         {/* Working days */}
