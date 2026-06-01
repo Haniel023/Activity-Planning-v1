@@ -241,7 +241,6 @@ export default function Dashboard() {
         const { id } = await api.createRequest(requestForm)
         const newReq: ActivityRequest = {
           id,
-          itNumber: requestForm.itNumber,
           ...requestForm,
           status: 'open',
           createdAt: new Date().toISOString(),
