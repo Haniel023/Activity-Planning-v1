@@ -1,4 +1,4 @@
-import type { ActivityRow, ActivityPlan, MonthConfig, PlanType, DevPersons, SupportPersons, SelfCheckTR, DayMark, PICEntry, PersonEntry } from './types'
+import type { ActivityRow, ActivityPlan, MonthConfig, PlanType, DevPersons, SupportPersons, SelfCheckTR, DayMark, PICEntry, PersonEntry, Stakeholder } from './types'
 import { SELF_CHECK_DEFAULTS } from './types'
 
 export function generateId() {
@@ -145,9 +145,67 @@ export function migratePersonsToList(type: PlanType, persons: any): PersonEntry[
   return list
 }
 
-// Auto-fill name for an approval slot role from personsList or legacy persons
-export function autoFillNameForRole(role: string, type: PlanType, persons: DevPersons | SupportPersons, personsList?: PersonEntry[]): string {
+// Migrate personsList / legacy persons → Stakeholder[]
+export function migrateToStakeholders(personsList?: PersonEntry[], persons?: any, type?: PlanType): Stakeholder[] {
+  if (personsList && personsList.length > 0) {
+    const map = new Map<string, Stakeholder>()
+    for (const p of personsList) {
+      if (!p.name?.trim()) continue
+      const key = p.name.trim()
+      const existing = map.get(key)
+      if (existing) { if (!existing.roles.includes(p.role)) existing.roles.push(p.role) }
+      else map.set(key, { id: p.id, name: key, roles: [p.role] })
+    }
+    if (map.size > 0) return Array.from(map.values())
+  }
+  if (persons) {
+    const result: Stakeholder[] = []
+    const add = (name: string, role: string) => {
+      if (!name?.trim()) return
+      const existing = result.find(s => s.name === name.trim())
+      if (existing) { if (!existing.roles.includes(role)) existing.roles.push(role) }
+      else result.push({ id: generateId(), name: name.trim(), roles: [role] })
+    }
+    if (type === 'development') {
+      add(persons.requestor, 'Requestor'); add(persons.designer, 'Designer')
+      add(persons.developer, 'Developer'); add(persons.se, 'SE'); add(persons.pm, 'PM')
+    } else {
+      add(persons.requestor, 'Requestor'); add(persons.smartMember, 'Main Support')
+      add(persons.se, 'SE'); add(persons.pm, 'PM')
+    }
+    return result
+  }
+  return []
+}
+
+// Renumber all activities sequentially based on their position
+export function renumberActivities(activities: ActivityRow[]): ActivityRow[] {
+  let phaseNum = 0
+  const subCount = new Map<number, number>()
+  return activities.map(a => {
+    if (a.isPhase) {
+      phaseNum++
+      subCount.set(phaseNum, 0)
+      return { ...a, number: `${phaseNum}.0` }
+    }
+    const ph = phaseNum > 0 ? phaseNum : 1
+    const sub = (subCount.get(ph) ?? 0) + 1
+    subCount.set(ph, sub)
+    return { ...a, number: `${ph}.${sub}` }
+  })
+}
+
+// Auto-fill name for an approval slot role from stakeholders / personsList / legacy persons
+export function autoFillNameForRole(role: string, type: PlanType, persons: DevPersons | SupportPersons, personsList?: PersonEntry[], stakeholders?: Stakeholder[]): string {
   const r = role.toUpperCase()
+  if (stakeholders && stakeholders.length > 0) {
+    if (r === 'PIC') {
+      const main = stakeholders.find(s => s.roles.some(ro => ['Support PIC', 'Main Support', 'Developer'].includes(ro))) ?? stakeholders[0]
+      return main?.name || ''
+    }
+    if (r === 'PROJECT LEADER') return stakeholders.find(s => s.roles.some(ro => ['Project Leader', 'PM'].includes(ro)))?.name || ''
+    if (r === 'SUPERVISOR')     return stakeholders.find(s => s.roles.some(ro => ['Project Supervisor', 'System Expert', 'SE'].includes(ro)))?.name || ''
+  }
   if (personsList && personsList.length > 0) {
     if (r === 'PIC') {
       const main = personsList.find(p => ['Main Support', 'Developer'].includes(p.role)) ?? personsList[0]
@@ -228,12 +286,13 @@ export function createDefaultPlan(type: PlanType): ActivityPlan {
     groupType: undefined,
     persons: type === 'development' ? devPersons : supportPersons,
     personsList: [],
+    stakeholders: [],
     additionalPersons: [],
     approvals: {
-      preparedBy:  { name: '', role: 'PIC',            remarks: '' },
-      reviewedBy:  { name: '', role: 'PROJECT LEADER', remarks: '' },
-      approvedBy1: { name: '', role: 'SUPERVISOR',     remarks: '' },
-      approvedBy2: { name: '', role: 'MANAGER',        remarks: '' },
+      preparedBy:  { name: '', role: 'PIC',              remarks: '' },
+      reviewedBy:  { name: '', role: 'PROJECT LEADER',   remarks: '' },
+      approvedBy1: { name: '', role: 'SUPERVISOR',       remarks: '' },
+      approvedBy2: { name: '', role: 'SECTION MANAGER',  remarks: '' },
     },
     activities: type === 'development' ? devActivities : supportActivities,
     months,

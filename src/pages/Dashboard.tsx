@@ -2,22 +2,28 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type PlanSummary } from '../api'
 import { createDefaultPlan, createDefaultSelfCheck } from '../utils'
-import type { PlanType, ActivityRequest, GroupType } from '../types'
+import type { PlanType, ActivityRequest, GroupType, CompanyHoliday } from '../types'
 import ConfirmModal from '../components/ConfirmModal'
+import HolidayManager from '../components/HolidayManager'
+import ApproverMaintenance from '../components/ApproverMaintenance'
 
-type DashView = 'plans' | 'analytics' | 'requests'
+type DashView = 'plans' | 'analytics' | 'requests' | 'settings'
 
 const STATUS_CHIP: Record<string, string> = {
-  draft:        'bg-gray-100 text-gray-600',
-  published:    'bg-blue-100 text-blue-700',
-  for_revision: 'bg-amber-100 text-amber-700',
-  rejected:     'bg-red-100 text-red-700',
+  draft:            'bg-gray-100 text-gray-600',
+  ongoing_approval: 'bg-indigo-100 text-indigo-700',
+  published:        'bg-blue-100 text-blue-700',
+  for_revision:     'bg-amber-100 text-amber-700',
+  cancelled:        'bg-gray-200 text-gray-500',
+  rejected:         'bg-red-100 text-red-700',
 }
 const STATUS_LABEL: Record<string, string> = {
-  draft:        'Draft',
-  published:    'Published',
-  for_revision: 'For Revision',
-  rejected:     'Rejected',
+  draft:            'Draft',
+  ongoing_approval: 'Ongoing Approval',
+  published:        'Published',
+  for_revision:     'For Revision',
+  cancelled:        'Cancelled',
+  rejected:         'Rejected',
 }
 const PROJECT_CHIP: Record<string, string> = {
   COMPLETE:      'bg-green-100 text-green-700',
@@ -104,12 +110,17 @@ export default function Dashboard() {
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'development' | 'support'>('all')
-  const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'published' | 'for_revision' | 'rejected'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'ongoing_approval' | 'published' | 'for_revision' | 'cancelled' | 'rejected'>('all')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 15
 
   // ── View state ───────────────────────────────────────────────────────────────
   const [view, setView] = useState<DashView>('plans')
+
+  // ── Company holidays ─────────────────────────────────────────────────────────
+  const [companyHolidays, setCompanyHolidays] = useState<CompanyHoliday[]>([])
+  const [showHolidayManager, setShowHolidayManager] = useState(false)
+  useEffect(() => { api.listCompanyHolidays().then(setCompanyHolidays).catch(() => {}) }, [])
 
   // ── Requests state ───────────────────────────────────────────────────────────
   const [requests, setRequests] = useState<ActivityRequest[]>([])
@@ -208,7 +219,10 @@ export default function Dashboard() {
   }
 
   const filteredPlans = plans.filter(p => {
-    if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false
+    if (search) {
+      const q = search.toLowerCase()
+      if (!p.title.toLowerCase().includes(q) && !p.itNumber.toLowerCase().includes(q)) return false
+    }
     if (filterType !== 'all' && p.type !== filterType) return false
     if (filterStatus !== 'all' && p.status !== filterStatus) return false
     return true
@@ -276,6 +290,8 @@ export default function Dashboard() {
 
   // ── Analytics ────────────────────────────────────────────────────────────────
   const analytics = groupAnalytics(plans)
+  const [analyticsGroupFilter, setAnalyticsGroupFilter] = useState<string | null>(null)
+  const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState<string | null>(null)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -299,6 +315,16 @@ export default function Dashboard() {
           danger
           onConfirm={() => doDeleteRequest(confirmDeleteRequest.id)}
           onCancel={() => setConfirmDeleteRequest(null)}
+        />
+      )}
+
+      {/* Holiday Manager */}
+      {showHolidayManager && (
+        <HolidayManager
+          companyHolidays={companyHolidays}
+          visibleYear={new Date().getFullYear()}
+          onClose={() => setShowHolidayManager(false)}
+          onChanged={setCompanyHolidays}
         />
       )}
 
@@ -379,18 +405,18 @@ export default function Dashboard() {
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="shrink-0">
-            <h1 className="text-xl font-bold text-gray-800">Activity Planning</h1>
+            <h1 className="text-xl font-bold text-gray-800">Projects</h1>
             <p className="text-xs text-gray-400 mt-0.5">Manage and track all activity plans</p>
           </div>
 
           {/* Search */}
-          <div className="flex-1 max-w-sm relative">
+          <div className={`flex-1 max-w-sm relative ${view === 'settings' ? 'invisible' : ''}`}>
             <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
               type="text"
-              placeholder={view === 'requests' ? 'Search requests...' : 'Search plans...'}
+              placeholder={view === 'requests' ? 'Search requests...' : 'Search by title or IT number...'}
               value={view === 'requests' ? reqSearch : search}
               onChange={e => view === 'requests' ? setReqSearch(e.target.value) : (setSearch(e.target.value), setPage(1))}
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 bg-gray-50"
@@ -405,42 +431,57 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Action button */}
-          {view === 'plans' && (
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => setShowNewModal(true)}
-              className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+              onClick={() => setShowHolidayManager(true)}
+              className="bg-white border border-gray-200 hover:border-orange-300 hover:bg-orange-50 text-gray-600 hover:text-orange-600 text-sm font-medium px-3 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
+              title="Manage company holidays"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              New Plan
+              Holidays
+              {companyHolidays.length > 0 && (
+                <span className="text-[10px] font-semibold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">{companyHolidays.length}</span>
+              )}
             </button>
-          )}
-          {view === 'requests' && (
-            <button
-              onClick={openCreateRequest}
-              className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              New Request
-            </button>
-          )}
+            {view === 'plans' && (
+              <button
+                onClick={() => setShowNewModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                New Plan
+              </button>
+            )}
+            {view === 'requests' && (
+              <button
+                onClick={openCreateRequest}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                New Request
+              </button>
+            )}
+          </div>
         </div>
 
         {/* View tabs + filters */}
         <div className="max-w-6xl mx-auto px-6 pb-3 flex items-center gap-3 flex-wrap">
           {/* View tabs */}
           <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs shrink-0">
-            {(['plans', 'analytics', 'requests'] as DashView[]).map(v => (
+            {(['plans', 'analytics', 'requests', 'settings'] as DashView[]).map(v => (
               <button
                 key={v}
                 onClick={() => setView(v)}
                 className={`px-3 py-1.5 font-medium transition-colors capitalize ${view === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
               >
-                {v === 'plans' ? 'Plans' : v === 'analytics' ? 'Analytics' : 'Requests'}
+                {v === 'plans' ? 'Plans' : v === 'analytics' ? 'Analytics' : v === 'requests' ? 'Requests' : 'Settings'}
               </button>
             ))}
           </div>
@@ -456,12 +497,18 @@ export default function Dashboard() {
                 </button>
               ))}
               <span className="text-gray-200 text-sm">|</span>
-              {(['all', 'draft', 'published', 'for_revision', 'rejected'] as const).map(s => (
-                <button key={s} onClick={() => setFilter(setFilterStatus)(s)}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${filterStatus === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
-                  {s === 'all' ? 'All Status' : STATUS_LABEL[s]}
-                </button>
-              ))}
+              <select
+                value={filterStatus}
+                onChange={e => setFilter(setFilterStatus)(e.target.value as typeof filterStatus)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer"
+              >
+                <option value="all">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="ongoing_approval">Ongoing Approval</option>
+                <option value="published">Published</option>
+                <option value="for_revision">For Revision</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
             </>
           )}
 
@@ -549,6 +596,9 @@ export default function Dashboard() {
                           <h3 className="text-sm font-semibold text-gray-800 truncate">
                             {plan.title || <span className="text-gray-400 italic font-normal">Untitled Plan</span>}
                           </h3>
+                          {plan.itNumber && (
+                            <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">{plan.itNumber}</span>
+                          )}
                           <span className="text-xs text-gray-400">v{plan.version}</span>
                           <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_CHIP[plan.status] || 'bg-gray-100 text-gray-500'}`}>
                             {STATUS_LABEL[plan.status] || plan.status}
@@ -618,9 +668,24 @@ export default function Dashboard() {
         {/* ── ANALYTICS VIEW ──────────────────────────────────────────────── */}
         {view === 'analytics' && (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-base font-semibold text-gray-700 mb-1">Group Performance Overview</h2>
-              <p className="text-xs text-gray-400">Based on {plans.length} plan{plans.length !== 1 ? 's' : ''} — project status per group</p>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-base font-semibold text-gray-700 mb-1">Group Performance Overview</h2>
+                <p className="text-xs text-gray-400">Based on {plans.length} plan{plans.length !== 1 ? 's' : ''} — click a group card to filter</p>
+              </div>
+              {/* Project status filters */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[null, 'COMPLETE', 'ON TIME', 'AT RISK', 'DELAYED', 'NOT STARTED'].map(s => (
+                  <button key={s ?? 'all'} onClick={() => setAnalyticsStatusFilter(s)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${analyticsStatusFilter === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+                    {s === null ? 'All' : s === 'ON TIME' ? 'On Time' : s === 'NOT STARTED' ? 'Not Started' : s.charAt(0) + s.slice(1).toLowerCase()}
+                  </button>
+                ))}
+                {(analyticsGroupFilter || analyticsStatusFilter) && (
+                  <button onClick={() => { setAnalyticsGroupFilter(null); setAnalyticsStatusFilter(null) }}
+                    className="text-xs px-2 py-1 text-gray-400 hover:text-gray-600 underline">Clear filters</button>
+                )}
+              </div>
             </div>
 
             {plansLoading ? (
@@ -632,8 +697,11 @@ export default function Dashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {analytics.map(({ group, count, avgProgress, statusBreakdown }) => {
                   const gStyle = group !== 'Unassigned' ? GROUP_STYLE[group as GroupType] : null
+                  const isSelected = analyticsGroupFilter === group
                   return (
-                    <div key={group} className={`bg-white border rounded-xl p-4 shadow-sm ${gStyle ? gStyle.border : 'border-gray-200'}`}>
+                    <div key={group}
+                      onClick={() => setAnalyticsGroupFilter(prev => prev === group ? null : group)}
+                      className={`bg-white border rounded-xl p-4 shadow-sm cursor-pointer transition-all hover:shadow-md ${isSelected ? 'ring-2 ring-blue-400' : ''} ${gStyle ? gStyle.border : 'border-gray-200'}`}>
                       <div className="flex items-center justify-between mb-3">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gStyle ? gStyle.chip : 'bg-gray-100 text-gray-600'}`}>
                           {group}
@@ -664,54 +732,73 @@ export default function Dashboard() {
             )}
 
             {/* Summary table */}
-            {!plansLoading && plans.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-700">Plans by Group</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-gray-50 text-gray-500 text-left">
-                        <th className="px-4 py-2 font-medium">Plan</th>
-                        <th className="px-4 py-2 font-medium">Group</th>
-                        <th className="px-4 py-2 font-medium">Status</th>
-                        <th className="px-4 py-2 font-medium">Progress</th>
-                        <th className="px-4 py-2 font-medium">Project Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {plans.map(p => (
-                        <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/plan/${p.id}`)}>
-                          <td className="px-4 py-2 font-medium text-gray-800 truncate max-w-48">{p.title || <span className="text-gray-400 italic">Untitled</span>}</td>
-                          <td className="px-4 py-2">
-                            {p.groupType ? (
-                              <span className={`px-1.5 py-0.5 rounded-full font-medium ${GROUP_STYLE[p.groupType].chip}`}>{p.groupType}</span>
-                            ) : (
-                              <span className="text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-2">
-                            <span className={`px-1.5 py-0.5 rounded-full font-medium ${STATUS_CHIP[p.status]}`}>{STATUS_LABEL[p.status]}</span>
-                          </td>
-                          <td className="px-4 py-2">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full ${PROJECT_BAR[p.projectStatus] || 'bg-gray-400'}`} style={{ width: `${p.projectProgress}%` }} />
-                              </div>
-                              <span>{p.projectProgress.toFixed(0)}%</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2">
-                            <span className={`px-1.5 py-0.5 rounded-full font-medium ${PROJECT_CHIP[p.projectStatus] || 'bg-gray-100 text-gray-500'}`}>{p.projectStatus}</span>
-                          </td>
+            {!plansLoading && plans.length > 0 && (() => {
+              const filteredAnalytics = plans.filter(p => {
+                if (analyticsGroupFilter) {
+                  const matchGroup = analyticsGroupFilter === 'Unassigned' ? !p.groupType : p.groupType === analyticsGroupFilter
+                  if (!matchGroup) return false
+                }
+                if (analyticsStatusFilter && p.projectStatus !== analyticsStatusFilter) return false
+                return true
+              })
+              return (
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-700">
+                      Plans by Group
+                      {(analyticsGroupFilter || analyticsStatusFilter) && (
+                        <span className="ml-2 text-xs font-normal text-blue-500">
+                          {filteredAnalytics.length} of {plans.length} shown
+                        </span>
+                      )}
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-500 text-left">
+                          <th className="px-4 py-2 font-medium">Plan</th>
+                          <th className="px-4 py-2 font-medium">Group</th>
+                          <th className="px-4 py-2 font-medium">Status</th>
+                          <th className="px-4 py-2 font-medium">Progress</th>
+                          <th className="px-4 py-2 font-medium">Project Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {filteredAnalytics.length === 0 ? (
+                          <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-400 text-xs">No plans match the selected filters.</td></tr>
+                        ) : filteredAnalytics.map(p => (
+                          <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/plan/${p.id}`)}>
+                            <td className="px-4 py-2 font-medium text-gray-800 truncate max-w-48">{p.title || <span className="text-gray-400 italic">Untitled</span>}</td>
+                            <td className="px-4 py-2">
+                              {p.groupType ? (
+                                <span className={`px-1.5 py-0.5 rounded-full font-medium ${GROUP_STYLE[p.groupType].chip}`}>{p.groupType}</span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className={`px-1.5 py-0.5 rounded-full font-medium ${STATUS_CHIP[p.status] || 'bg-gray-100 text-gray-500'}`}>{STATUS_LABEL[p.status] || p.status}</span>
+                            </td>
+                            <td className="px-4 py-2">
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${PROJECT_BAR[p.projectStatus] || 'bg-gray-400'}`} style={{ width: `${p.projectProgress}%` }} />
+                                </div>
+                                <span>{p.projectProgress.toFixed(0)}%</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className={`px-1.5 py-0.5 rounded-full font-medium ${PROJECT_CHIP[p.projectStatus] || 'bg-gray-100 text-gray-500'}`}>{p.projectStatus}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
           </div>
         )}
 
@@ -816,6 +903,10 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {/* ── SETTINGS VIEW ───────────────────────────────────────────────── */}
+        {view === 'settings' && <ApproverMaintenance />}
+
       </main>
     </div>
   )

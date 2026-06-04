@@ -113,14 +113,17 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan, wb: Wor
 
   // ── Persons involved rows + approver names ────────────────────────────────
   // Use personsList if available, otherwise fall back to legacy persons object
-  const rawPersonsList = plan.personsList && plan.personsList.length > 0
-    ? plan.personsList.map(p => [`${p.role}:`, p.name] as [string, string])
-    : (() => {
-        const persons = plan.persons as unknown as Record<string, string>
-        return type === 'development'
-          ? [['Requestor:', persons.requestor], ['Designer:', persons.designer], ['Developer:', persons.developer], ['SE:', persons.se], ['PM:', persons.pm]] as [string, string][]
-          : [['Requestor:', persons.requestor], ['PIC:', persons.smartMember], ['SE:', persons.se], ['PM:', persons.pm]] as [string, string][]
-      })()
+  const _stk = plan.stakeholders ?? []
+  const rawPersonsList: [string, string][] = _stk.length > 0
+    ? _stk.filter(s => s.name?.trim()).map(s => [`${s.roles.join(' / ')}:`, s.name])
+    : plan.personsList && plan.personsList.length > 0
+      ? plan.personsList.map(p => [`${p.role}:`, p.name] as [string, string])
+      : (() => {
+          const persons = plan.persons as unknown as Record<string, string>
+          return type === 'development'
+            ? [['Requestor:', persons.requestor], ['Designer:', persons.designer], ['Developer:', persons.developer], ['SE:', persons.se], ['PM:', persons.pm]] as [string, string][]
+            : [['Requestor:', persons.requestor], ['PIC:', persons.smartMember], ['SE:', persons.se], ['PM:', persons.pm]] as [string, string][]
+        })()
 
   const approvers = [approvals.preparedBy, approvals.reviewedBy, approvals.approvedBy1, approvals.approvedBy2]
   rawPersonsList.forEach(([label, value], i) => {

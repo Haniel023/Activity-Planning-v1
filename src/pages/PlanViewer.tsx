@@ -7,30 +7,36 @@ import ActivityTable from '../components/ActivityTable'
 import PlanHeader from '../components/PlanHeader'
 import SelfCheckTRView from '../components/SelfCheckTRView'
 
-type ViewerRole = 'PIC' | 'PROJECT LEADER' | 'SUPERVISOR' | 'MANAGER'
-type SlotKey = 'preparedBy' | 'reviewedBy' | 'approvedBy1' | 'approvedBy2'
+type ViewerRole = 'PIC' | 'PROJECT LEADER' | 'SUPERVISOR' | 'SECTION MANAGER' | 'DEPARTMENT MANAGER' | 'MANAGER'
+type SlotKey = 'preparedBy' | 'reviewedBy' | 'approvedBy1' | 'approvedBy2' | 'approvedBy3'
 type Tab = 'plan' | 'selfcheck'
 
 const ROLE_TO_SLOT: Record<ViewerRole, SlotKey> = {
   'PIC': 'preparedBy',
   'PROJECT LEADER': 'reviewedBy',
   'SUPERVISOR': 'approvedBy1',
-  'MANAGER': 'approvedBy2',
+  'SECTION MANAGER': 'approvedBy2',
+  'MANAGER': 'approvedBy2',           // legacy role name
+  'DEPARTMENT MANAGER': 'approvedBy3',
 }
 
-const ROLE_OPTIONS: ViewerRole[] = ['PIC', 'PROJECT LEADER', 'SUPERVISOR', 'MANAGER']
+const ROLE_OPTIONS: ViewerRole[] = ['PIC', 'PROJECT LEADER', 'SUPERVISOR', 'SECTION MANAGER', 'DEPARTMENT MANAGER']
 
 const STATUS_CHIP: Record<string, string> = {
-  draft:        'bg-gray-100 text-gray-600',
-  published:    'bg-blue-100 text-blue-700',
-  for_revision: 'bg-amber-100 text-amber-700',
-  rejected:     'bg-red-100 text-red-700',
+  draft:            'bg-gray-100 text-gray-600',
+  ongoing_approval: 'bg-indigo-100 text-indigo-700',
+  published:        'bg-blue-100 text-blue-700',
+  for_revision:     'bg-amber-100 text-amber-700',
+  cancelled:        'bg-gray-200 text-gray-500',
+  rejected:         'bg-red-100 text-red-700',
 }
 const STATUS_LABEL: Record<string, string> = {
-  draft:        'Draft',
-  published:    'Published',
-  for_revision: 'For Revision',
-  rejected:     'Rejected',
+  draft:            'Draft',
+  ongoing_approval: 'Ongoing Approval',
+  published:        'Published',
+  for_revision:     'For Revision',
+  cancelled:        'Cancelled',
+  rejected:         'Rejected',
 }
 
 export default function PlanViewer() {
@@ -47,8 +53,7 @@ export default function PlanViewer() {
   const [saved, setSaved] = useState(false)
   const [showRevisionModal, setShowRevisionModal] = useState(false)
   const [revisionReason, setRevisionReason] = useState('')
-  const [showRejectModal, setShowRejectModal] = useState(false)
-  const [rejectReason, setRejectReason] = useState('')
+  const [showCancelModal, setShowCancelModal] = useState(false)
   const [draggingOver, setDraggingOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Tracks which slots have been confirmed saved to the server — prevents premature locking from local signature upload
@@ -91,8 +96,8 @@ export default function PlanViewer() {
       // Auto-fill name if slot name is empty
       const slotKey = ROLE_TO_SLOT[r]
       const slot = plan.approvals[slotKey]
-      if (!slot.name && r !== 'PIC') {
-        const autoName = autoFillNameForRole(r, plan.type, plan.persons)
+      if (slot && !slot.name && r !== 'PIC') {
+        const autoName = autoFillNameForRole(r, plan.type, plan.persons, plan.personsList, plan.stakeholders)
         if (autoName) {
           updateSlot(slotKey, { name: autoName })
         }
@@ -135,7 +140,7 @@ export default function PlanViewer() {
       return
     }
     try {
-      await api.sendForRevision(plan.id, revisionReason, plan.approvals[ROLE_TO_SLOT[role]].name || role)
+      await api.sendForRevision(plan.id, revisionReason, plan.approvals[ROLE_TO_SLOT[role]]?.name || role)
       setPlan(prev => prev ? { ...prev, status: 'for_revision' } : prev)
       setShowRevisionModal(false)
       setRevisionReason('')
@@ -145,17 +150,13 @@ export default function PlanViewer() {
     }
   }
 
-  async function handleReject() {
-    if (!plan || !role || !rejectReason.trim()) {
-      alert('Please enter a reason for rejection.')
-      return
-    }
+  async function handleCancel() {
+    if (!plan) return
     try {
-      await api.rejectPlan(plan.id, rejectReason, plan.approvals[ROLE_TO_SLOT[role]].name || role)
-      setPlan(prev => prev ? { ...prev, status: 'rejected' } : prev)
-      setShowRejectModal(false)
-      setRejectReason('')
-      alert('Plan has been rejected. The PIC will be notified to rework and re-publish.')
+      await api.cancelPlan(plan.id, plan.approvals.preparedBy.name || 'PIC')
+      setPlan(prev => prev ? { ...prev, status: 'cancelled' } : prev)
+      setShowCancelModal(false)
+      alert('Project has been cancelled.')
     } catch (e) {
       alert('Failed: ' + (e as Error).message)
     }
@@ -194,10 +195,12 @@ export default function PlanViewer() {
   const isDev = plan.type === 'development'
   const slotKey = role ? ROLE_TO_SLOT[role] : null
   const isApprover = role && role !== 'PIC'
-  const canAction = isApprover && plan.status === 'published'
+  const canAction = isApprover && plan.status === 'ongoing_approval'
   const allApproved = ['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2']
     .every(k => !!(plan.approvals as any)[k]?.signatureImage)
+    && (!plan.requiresDeptManager || !!(plan.approvals as any).approvedBy3?.signatureImage)
   const picPartialEdit = role === 'PIC' && plan.status === 'published' && allApproved
+  const picCanCancel = role === 'PIC' && ['draft', 'ongoing_approval', 'for_revision'].includes(plan.status)
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gray-100">
@@ -254,26 +257,15 @@ export default function PlanViewer() {
         </div>
       )}
 
-      {/* Reject modal */}
-      {showRejectModal && (
+      {/* Cancel modal */}
+      {showCancelModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm space-y-4">
-            <h2 className="text-sm font-semibold text-red-700">Reject Plan</h2>
-            <p className="text-xs text-gray-500">This plan will be marked as rejected. The PIC must rework and re-publish it.</p>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Reason for rejection</label>
-              <textarea
-                autoFocus
-                rows={3}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
-                placeholder="e.g. Activity plan does not meet requirements..."
-                value={rejectReason}
-                onChange={e => setRejectReason(e.target.value)}
-              />
-            </div>
+            <h2 className="text-sm font-semibold text-gray-800">Cancel Project</h2>
+            <p className="text-xs text-gray-500">This will mark the project as cancelled. This action cannot be undone from the viewer.</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowRejectModal(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
-              <button onClick={handleReject} className="text-xs bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg">Reject Plan</button>
+              <button onClick={() => setShowCancelModal(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-2">Back</button>
+              <button onClick={handleCancel} className="text-xs bg-gray-700 hover:bg-gray-800 text-white font-medium px-4 py-2 rounded-lg">Confirm Cancel</button>
             </div>
           </div>
         </div>
@@ -322,6 +314,14 @@ export default function PlanViewer() {
             </button>
           )}
 
+          {/* PIC cancel button */}
+          {picCanCancel && (
+            <button onClick={() => setShowCancelModal(true)}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors">
+              Cancel Project
+            </button>
+          )}
+
           {/* Role badge + change */}
           {role && (
             <div className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2.5 py-1">
@@ -344,17 +344,19 @@ export default function PlanViewer() {
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
 
                 {/* Sequential approval order */}
-                {(['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2'] as SlotKey[]).map((key, idx) => {
+                {((['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2', ...(plan.requiresDeptManager ? ['approvedBy3'] : [])] as SlotKey[])).map((key, idx) => {
                   const slot = plan.approvals[key]
+                  if (!slot) return null
                   const isMySlot = key === slotKey && isApprover
                   const isSigned2 = !!slot.signatureImage
 
                   // Sequential: previous slot must be signed before this one is actionable
-                  const prevKey = (['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2'] as SlotKey[])[idx - 1]
+                  const allSlots = ['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2', ...(plan.requiresDeptManager ? ['approvedBy3'] : [])] as SlotKey[]
+                  const prevKey = allSlots[idx - 1]
                   const prevSigned = idx === 0 || !!plan.approvals[prevKey]?.signatureImage
 
-                  // Lock only after confirmed server save, or when plan status changed (revision/reject)
-                  const isActedOn = approverActed.has(key) || plan.status === 'for_revision' || plan.status === 'rejected'
+                  // Lock only after confirmed server save, or when plan status changed (revision/cancel)
+                  const isActedOn = approverActed.has(key) || plan.status === 'for_revision' || plan.status === 'cancelled'
 
                   // ── Read-only summary (other slots, or locked, or PIC's slot) ──
                   if (!isMySlot || isActedOn) {
@@ -376,9 +378,7 @@ export default function PlanViewer() {
                             ? <span className="text-[10px] font-medium text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full">✓ Approved</span>
                             : isMySlot && isActedOn && plan.status === 'for_revision'
                               ? <span className="text-[10px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">⟳ For Revision</span>
-                              : isMySlot && isActedOn && plan.status === 'rejected'
-                                ? <span className="text-[10px] font-medium text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">✕ Rejected</span>
-                                : null
+                              : null
                           }
                         </div>
                         <p className="text-xs text-gray-700 font-medium">{slot.name || <span className="text-gray-400 italic">—</span>}</p>
@@ -472,18 +472,12 @@ export default function PlanViewer() {
                         {saving ? 'Saving...' : saved ? '✓ Approval Saved' : 'Save Approval'}
                       </button>
 
-                      {/* For Revision + Reject */}
+                      {/* For Revision */}
                       {canAction && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <button onClick={() => setShowRevisionModal(true)}
-                            className="text-xs font-medium py-2 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors">
-                            For Revision
-                          </button>
-                          <button onClick={() => setShowRejectModal(true)}
-                            className="text-xs font-medium py-2 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 transition-colors">
-                            Reject
-                          </button>
-                        </div>
+                        <button onClick={() => setShowRevisionModal(true)}
+                          className="w-full text-xs font-medium py-2 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors">
+                          Send for Revision
+                        </button>
                       )}
                     </div>
                   )

@@ -1,5 +1,5 @@
-import type { ActivityPlan, ApprovalSection, SelfCheckTR, ActivityRequest, ProgressUpdate, GroupType, CompanyHoliday } from './types'
-import { calcPlanStatus, migratePersonsToList } from './utils'
+import type { ActivityPlan, ApprovalSection, SelfCheckTR, ActivityRequest, ProgressUpdate, GroupType, CompanyHoliday, ApproverEntry } from './types'
+import { calcPlanStatus, migratePersonsToList, migrateToStakeholders } from './utils'
 
 const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
 
@@ -16,6 +16,7 @@ export interface PlanSummary {
   projectStatus: string
   projectProgress: number
   picName: string
+  itNumber: string
   groupType: GroupType | null
 }
 
@@ -45,6 +46,7 @@ export const api = {
         publishedAt: row.publishedAt,
         approvalCount: row.approvalCount,
         picName: row.picName || '',
+        itNumber: row.itNumber || '',
         groupType: row.groupType ?? null,
         projectStatus: ps.label,
         projectProgress: ps.progress,
@@ -55,9 +57,11 @@ export const api = {
   async getPlan(id: string): Promise<{ plan: ActivityPlan; selfCheck: SelfCheckTR | null }> {
     const result = await req(`${BASE}/plans/${id}`)
     const plan = result.plan as ActivityPlan
-    // Migrate old persons object to personsList on load
     if (!plan.personsList || plan.personsList.length === 0) {
       plan.personsList = migratePersonsToList(plan.type, plan.persons as any)
+    }
+    if (!plan.stakeholders || plan.stakeholders.length === 0) {
+      plan.stakeholders = migrateToStakeholders(plan.personsList, plan.persons as any, plan.type)
     }
     return { plan, selfCheck: result.selfCheck }
   },
@@ -107,6 +111,22 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason, by }),
+    })
+  },
+
+  async listVersionSnapshots(id: string): Promise<{ version: string; event: string; createdAt: string }[]> {
+    return req(`${BASE}/plans/${id}/versions`)
+  },
+
+  async getVersionSnapshot(id: string, version: string): Promise<{ data: ActivityPlan }> {
+    return req(`${BASE}/plans/${id}/versions/${encodeURIComponent(version)}`)
+  },
+
+  async cancelPlan(id: string, by: string): Promise<void> {
+    await req(`${BASE}/plans/${id}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ by }),
     })
   },
 
@@ -194,5 +214,31 @@ export const api = {
 
   async deleteCompanyHoliday(id: string): Promise<void> {
     await req(`${BASE}/holidays/${id}`, { method: 'DELETE' })
+  },
+
+  // ── Approvers ────────────────────────────────────────────────────────────────
+
+  async listApprovers(): Promise<ApproverEntry[]> {
+    return req(`${BASE}/approvers`)
+  },
+
+  async createApprover(name: string, email: string, position: string): Promise<{ id: string }> {
+    return req(`${BASE}/approvers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, position }),
+    })
+  },
+
+  async updateApprover(id: string, name: string, email: string, position: string): Promise<void> {
+    await req(`${BASE}/approvers/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, position }),
+    })
+  },
+
+  async deleteApprover(id: string): Promise<void> {
+    await req(`${BASE}/approvers/${id}`, { method: 'DELETE' })
   },
 }

@@ -2,9 +2,11 @@ export type PlanType = 'development' | 'support'
 export type GroupType = 'SMART' | 'DEV' | 'NETWORK'
 
 export const PERSON_ROLES = [
-  'Requestor', 'Main Support', 'Sub Support',
-  'Developer', 'Designer', 'Sub Developer', 'Sub Designer',
-  'SE', 'PM', 'Manager', 'Network-Support',
+  'Project Manager', 'Project Supervisor', 'Project Leader',
+  'Support Supervisor', 'System Expert', 'Support PIC',
+  'Designer', 'Developer', 'Technical Reviewer',
+  'DBA/Release Support PIC', 'Gatepass PIC',
+  'Requestor', 'Customer',
 ] as const
 
 export type PersonRole = typeof PERSON_ROLES[number]
@@ -13,6 +15,12 @@ export interface PersonEntry {
   id: string
   role: string
   name: string
+}
+
+export interface Stakeholder {
+  id: string
+  name: string
+  roles: string[]   // one person can hold multiple roles
 }
 
 export interface CompanyHoliday {
@@ -29,7 +37,7 @@ export type StatusValue =
   | 'ON HOLD'
 
 // Plan lifecycle status
-export type PlanDocStatus = 'draft' | 'published' | 'for_revision' | 'rejected'
+export type PlanDocStatus = 'draft' | 'ongoing_approval' | 'published' | 'for_revision' | 'cancelled' | 'rejected'
 
 export interface RACI {
   r: boolean
@@ -61,6 +69,7 @@ export interface ActivityRow {
   autoProgress?: boolean
   mh: number
   hoursPerDay?: number   // hours allocated per day for this activity (default 8)
+  startDate?: string     // YYYY-MM-DD — auto-plotting starts from this date
   workingDays: number
   dayMarks: DayMark[]
 }
@@ -68,6 +77,7 @@ export interface ActivityRow {
 export interface ApproverSlot {
   name: string
   role: string
+  email?: string
   remarks: string
   signatureImage?: string
   approvedAt?: string
@@ -75,11 +85,20 @@ export interface ApproverSlot {
   revisionReason?: string
 }
 
+export interface ApproverEntry {
+  id: string
+  name: string
+  email: string
+  position: string
+  createdAt: string
+}
+
 export interface ApprovalSection {
   preparedBy: ApproverSlot
   reviewedBy: ApproverSlot
   approvedBy1: ApproverSlot
   approvedBy2: ApproverSlot
+  approvedBy3?: ApproverSlot   // optional DEPARTMENT MANAGER (enabled via requiresDeptManager)
 }
 
 export interface DevPersons {
@@ -124,6 +143,7 @@ export interface ActivityPlan {
   groupType?: GroupType
   persons: DevPersons | SupportPersons
   personsList?: PersonEntry[]
+  stakeholders?: Stakeholder[]
   additionalPersons?: AdditionalPerson[]
   approvals: ApprovalSection
   activities: ActivityRow[]
@@ -131,6 +151,7 @@ export interface ActivityPlan {
   otDays: string[]
   targetDate?: string        // YYYY-MM-DD
   status: PlanDocStatus
+  requiresDeptManager?: boolean   // enables optional approvedBy3 (DEPARTMENT MANAGER) slot
   versionHistory: VersionEntry[]
   publishedAt?: string
 }

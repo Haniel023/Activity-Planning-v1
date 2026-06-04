@@ -3,7 +3,7 @@ import type { ActivityPlan, ActivityRow, MonthConfig, PICEntry, RACI, CompanyHol
 import {
   generateId, generateDayMarks, isWeekend, dayOfWeekAbbr, dayNumber,
   daysInMonth, toDateStr, monthLabel, STATUS_OPTIONS, makePICEntry,
-  getNextPhaseNumber, getNextSubNumber, calcAutoProgress,
+  calcAutoProgress, renumberActivities,
 } from '../utils'
 import { getHoliday, isHoliday } from '../holidays'
 import { api } from '../api'
@@ -57,19 +57,24 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 const ROLE_CHIP: Record<string, { bg: string; text: string; border: string }> = {
-  'Requestor':       { bg: 'bg-sky-50',      text: 'text-sky-700',      border: 'border-sky-200'      },
-  'Main Support':    { bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200'  },
-  'Sub Support':     { bg: 'bg-teal-50',     text: 'text-teal-700',     border: 'border-teal-200'     },
-  'Developer':       { bg: 'bg-indigo-50',   text: 'text-indigo-700',   border: 'border-indigo-200'   },
-  'Designer':        { bg: 'bg-cyan-50',     text: 'text-cyan-700',     border: 'border-cyan-200'     },
-  'Sub Developer':   { bg: 'bg-violet-50',   text: 'text-violet-700',   border: 'border-violet-200'   },
-  'Sub Designer':    { bg: 'bg-fuchsia-50',  text: 'text-fuchsia-700',  border: 'border-fuchsia-200'  },
-  'SE':              { bg: 'bg-purple-50',   text: 'text-purple-700',   border: 'border-purple-200'   },
-  'PM':              { bg: 'bg-amber-50',    text: 'text-amber-700',    border: 'border-amber-200'    },
-  'Manager':         { bg: 'bg-rose-50',     text: 'text-rose-700',     border: 'border-rose-200'     },
-  'Network-Support': { bg: 'bg-orange-50',   text: 'text-orange-700',   border: 'border-orange-200'   },
+  'Project Manager':         { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200'   },
+  'Project Supervisor':      { bg: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200'    },
+  'Project Leader':          { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200'    },
+  'Support Supervisor':      { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200'    },
+  'System Expert':           { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200'  },
+  'Support PIC':             { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  'Designer':                { bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200'    },
+  'Developer':               { bg: 'bg-indigo-50',  text: 'text-indigo-700',  border: 'border-indigo-200'  },
+  'Technical Reviewer':      { bg: 'bg-slate-50',   text: 'text-slate-700',   border: 'border-slate-200'   },
+  'DBA/Release Support PIC': { bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200'  },
+  'Gatepass PIC':            { bg: 'bg-fuchsia-50', text: 'text-fuchsia-700', border: 'border-fuchsia-200' },
+  'Requestor':               { bg: 'bg-sky-50',     text: 'text-sky-700',     border: 'border-sky-200'     },
+  'Customer':                { bg: 'bg-green-50',   text: 'text-green-700',   border: 'border-green-200'   },
   // legacy
-  'SMART Member':    { bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200'  },
+  'Main Support':            { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  'SMART Member':            { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
+  'SE':                      { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200'  },
+  'PM':                      { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200'   },
 }
 
 interface Props {
@@ -113,14 +118,16 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
   )
   const otSet = useMemo(() => new Set(otDays), [otDays])
 
-  // PIC roles from personsList when available, fallback to fixed type-based roles
+  // PIC roles: extract from stakeholders → personsList → fallback
   const personRoles = useMemo(() => {
+    const stk = plan.stakeholders
+    if (stk && stk.length > 0) return [...new Set(stk.flatMap(s => s.roles))]
     const list = plan.personsList
     if (list && list.length > 0) return [...new Set(list.map(p => p.role))]
     return plan.type === 'development'
-      ? ['Requestor', 'Designer', 'Developer', 'SE', 'PM', 'Manager']
-      : ['Requestor', 'Main Support', 'SE', 'PM', 'Manager']
-  }, [plan.personsList, plan.type])
+      ? ['Requestor', 'Designer', 'Developer', 'Project Leader', 'Project Manager', 'Technical Reviewer']
+      : ['Requestor', 'Support PIC', 'System Expert', 'Project Leader', 'Project Supervisor']
+  }, [plan.stakeholders, plan.personsList, plan.type])
 
   // Calendar year for holiday manager preview
   const calendarYear = months[0]?.year ?? new Date().getFullYear()
@@ -136,18 +143,20 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
 
   function addRow(afterId: string, isPhase: boolean) {
     const idx = activities.findIndex(a => a.id === afterId)
-    const number = isPhase ? getNextPhaseNumber(activities) : getNextSubNumber(activities, idx)
     const newRow: ActivityRow = {
-      id: generateId(), number, name: '', isPhase,
+      id: generateId(), number: '', name: '', isPhase,
       picEntries: [makePICEntry()],
       status: 'NOT YET STARTED', progress: 0, autoProgress: true, mh: 0, workingDays: 0,
       dayMarks: generateDayMarks(months),
     }
-    const next = [...activities]; next.splice(idx + 1, 0, newRow)
-    updateActivities(next)
+    const next = [...activities]
+    next.splice(idx + 1, 0, newRow)
+    updateActivities(renumberActivities(next))
   }
 
-  function deleteRow(id: string) { updateActivities(activities.filter(a => a.id !== id)) }
+  function deleteRow(id: string) {
+    updateActivities(renumberActivities(activities.filter(a => a.id !== id)))
+  }
 
   function addPICEntry(rowId: string) {
     const row = activities.find(a => a.id === rowId)
@@ -182,7 +191,10 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
     if (!row) return
     const mm = new Map(row.dayMarks.map(m => [m.date, m]))
     const anyMarked = weekDates.some(d => type === 'plan' ? mm.get(d)?.plan : mm.get(d)?.actual)
-    const togglable = new Set(weekDates.filter(d => !isWeekend(d) || otSet.has(d)))
+    // Emergency OT: in partialEdit (fully approved), actual can be marked on any day incl. weekends/holidays
+    const togglable = (type === 'actual' && partialEdit)
+      ? new Set(weekDates)
+      : new Set(weekDates.filter(d => !isWeekend(d) || otSet.has(d)))
     updateActivities(activities.map(a => {
       if (a.id !== rowId) return a
       const newMarks = a.dayMarks.map(m => togglable.has(m.date) ? { ...m, [type]: !anyMarked } : m)
@@ -215,11 +227,12 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
     } else if (needed > currentCount) {
       const lastMarked = markedPlanDays[markedPlanDays.length - 1]
       const today = new Date().toISOString().split('T')[0]
-      const startFrom = lastMarked ?? today
+      // Use startDate as the starting point when no marks exist yet
+      const startFrom = lastMarked ?? (row.startDate ?? today)
       let toAdd = needed - currentCount
       const existingIdx = new Map(newMarks.map((m, i) => [m.date, i]))
       for (const date of allDays) {
-        if (date <= startFrom) continue
+        if (date < startFrom) continue
         if (isNonWorking(date)) continue
         const idx = existingIdx.get(date)
         if (idx !== undefined) {
@@ -263,18 +276,12 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
   const progress = totalMH > 0 ? ((doneMH + ongoingMH * 0.5) / totalMH) * 100 : 0
 
   const addLast = (isPhase: boolean) => {
-    const lastId = activities[activities.length - 1]?.id
-    const lastIdx = activities.length - 1
-    const number = isPhase ? getNextPhaseNumber(activities) : getNextSubNumber(activities, lastIdx)
-    if (lastId) {
-      addRow(lastId, isPhase)
-    } else {
-      updateActivities([{
-        id: generateId(), number, name: '', isPhase,
-        picEntries: [makePICEntry()], status: 'NOT YET STARTED', progress: 0, mh: 0, workingDays: 0,
-        dayMarks: generateDayMarks(months),
-      }])
+    const newRow: ActivityRow = {
+      id: generateId(), number: '', name: '', isPhase,
+      picEntries: [makePICEntry()], status: 'NOT YET STARTED', progress: 0, mh: 0, workingDays: 0,
+      dayMarks: generateDayMarks(months),
     }
+    updateActivities(renumberActivities([...activities, newRow]))
   }
 
   return (
@@ -325,7 +332,7 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
           </div>
           {!readOnly && !partialEdit && <button onClick={() => addLast(true)} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">+ Phase</button>}
           {!readOnly && !partialEdit && <button onClick={() => addLast(false)} className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded">+ Activity</button>}
-          {partialEdit && <span className="text-[10px] text-amber-600 font-medium bg-amber-50 px-2 py-1 rounded border border-amber-200">Fully Approved — editing actual & status only</span>}
+          {partialEdit && <span className="text-[10px] text-amber-600 font-medium bg-amber-50 px-2 py-1 rounded border border-amber-200">Fully Approved — actual & status only · Weekend/holiday actual available for emergency OT</span>}
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-400 flex-shrink-0">
           <span><span className="text-blue-600 font-bold">○</span> Plan &nbsp;<span className="text-orange-500 font-bold">●</span> Actual</span>
@@ -365,7 +372,9 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
               </th>
               <th className="border border-gray-200 px-1 py-1.5 text-center bg-gray-100 text-gray-600 w-16">Status</th>
               <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-8">%</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10" title="Man-hours · h/d = hours per day allocated">MH</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10" title="Man-hours">MH</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-purple-500 w-9" title="Hours per day allocated">h/d</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-green-600 w-20 whitespace-nowrap" title="Auto-plot start date">Start</th>
               <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-8 whitespace-nowrap" title="Auto-counted from Plan marks">Days</th>
               <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10">Sched.</th>
               {monthGroups.map(({ label, span }) => (
@@ -380,7 +389,7 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
               {(['R','A','C','I'] as const).map(l => (
                 <th key={l} className="border border-gray-200 bg-gray-100 text-gray-500 text-center w-5 font-semibold">{l}</th>
               ))}
-              {Array.from({ length: 5 }).map((_, i) => <th key={i} className="border border-gray-200 bg-gray-100" />)}
+              {Array.from({ length: 7 }).map((_, i) => <th key={i} className="border border-gray-200 bg-gray-100" />)}
               {viewMode === 'daily'
                 ? allDays.map(date => {
                     const wknd = isWeekend(date)
@@ -458,6 +467,7 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
                 onToggleWeek={(dates, type) => readOnly ? undefined : toggleWeekGroup(row.id, dates, type)}
                 onMHChange={newMH => handleMHChange(row.id, newMH)}
                 onHPDChange={newHPD => handleHPDChange(row.id, newHPD)}
+                onStartDateChange={date => updateActivities(activities.map(a => a.id === row.id ? { ...a, startDate: date || undefined } : a))}
               />
             ))}
           </tbody>
@@ -556,6 +566,7 @@ interface RowProps {
   onToggleWeek: (dates: string[], type: 'plan' | 'actual') => void | undefined
   onMHChange: (newMH: number) => void
   onHPDChange: (newHPD: number) => void
+  onStartDateChange: (date: string) => void
 }
 
 function ActivityRowUI(p: RowProps) {
@@ -575,7 +586,7 @@ function ActivityRowUI(p: RowProps) {
           <input className="w-8 bg-transparent text-xs font-semibold text-blue-800 focus:outline-none disabled:pointer-events-none"
             disabled={fieldLocked} value={row.number} onChange={e => p.onChange({ number: e.target.value })} />
         </td>
-        <td className="border border-gray-200 px-2 py-1 sticky left-8 bg-blue-50 z-10" colSpan={12}>
+        <td className="border border-gray-200 px-2 py-1 sticky left-8 bg-blue-50 z-10" colSpan={13}>
           <AutoTextarea className="w-full bg-transparent text-xs font-semibold text-blue-800 focus:outline-none disabled:pointer-events-none"
             value={row.name} disabled={fieldLocked} onChange={v => p.onChange({ name: v })} />
         </td>
@@ -601,23 +612,31 @@ function ActivityRowUI(p: RowProps) {
     const sym = type === 'plan' ? '○' : '●'
     const symColor = type === 'plan' ? 'text-blue-600' : 'text-orange-500'
     const hoverBg = type === 'plan' ? 'hover:bg-blue-50' : 'hover:bg-orange-50'
+    // Emergency OT: in partialEdit, actual can be marked on any day (weekends/holidays)
+    const emergencyOT = p.partialEdit && type === 'actual'
     const planLocked = locked || p.readOnly || (p.partialEdit && type === 'plan')
-    const actualLocked = locked || p.readOnly
+    const actualLocked = emergencyOT ? p.readOnly : (locked || p.readOnly)
     const cellLocked = type === 'plan' ? planLocked : actualLocked
-    const isCompHol = !wknd && companyHolidayMap.has(date)
+    const isCompHol = companyHolidayMap.has(date)
     const isPhHol = !wknd && isHoliday(date)
+    // Weekend/holiday actual in partialEdit — show distinct "emergency" styling
+    const isEmergencyClickable = emergencyOT && !active && (wknd || isCompHol || isPhHol)
 
     const bg = cellLocked
       ? (wknd ? 'bg-gray-100 cursor-not-allowed' : isCompHol ? 'bg-red-50/60 cursor-not-allowed' : isPhHol ? 'bg-orange-50/60 cursor-not-allowed' : 'bg-gray-100 cursor-not-allowed')
+      : isEmergencyClickable ? 'bg-amber-50 hover:bg-amber-100 border-amber-200'
       : isCompHol ? `bg-red-50 ${hoverBg}`
       : isPhHol ? `bg-orange-50 ${hoverBg}`
       : wknd ? `bg-amber-50 ${hoverBg}`
       : `bg-white ${hoverBg}`
 
     return (
-      <td key={date} className={`text-center w-6 ${cellLocked ? bg : `cursor-pointer ${bg}`} ${dayCellBorder(date)}`}
+      <td key={date}
+        title={isEmergencyClickable ? `${date} — click to mark emergency OT actual` : undefined}
+        className={`text-center w-6 ${cellLocked ? bg : `cursor-pointer ${bg}`} ${dayCellBorder(date)}`}
         onClick={cellLocked ? undefined : () => p.onToggleDay(date, type)}>
         {active && <span className={`font-bold text-sm leading-none ${symColor}`}>{sym}</span>}
+        {isEmergencyClickable && <span className="text-[7px] text-amber-400 leading-none block">OT</span>}
       </td>
     )
   }
@@ -713,22 +732,31 @@ function ActivityRowUI(p: RowProps) {
           )}
         </td>
 
-        {/* MH + h/d — auto-plots on change */}
-        <td className="border border-gray-200 px-0 py-0.5 align-middle text-center" rowSpan={2}>
+        {/* MH */}
+        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center" rowSpan={2}>
           <input type="number" min={0} step={0.5}
-            className="w-full text-xs bg-transparent focus:outline-none text-center text-gray-600 disabled:pointer-events-none"
-            title="Man-hours for this activity"
-            disabled={fieldLocked} value={row.mh}
+            className="w-full text-xs bg-transparent focus:outline-none text-center text-gray-700 font-medium disabled:pointer-events-none"
+            title="Man-hours" disabled={fieldLocked} value={row.mh}
             onChange={e => { if (!fieldLocked) p.onMHChange(Number(e.target.value)) }}
           />
-          <div className="flex items-center justify-center gap-0.5 mt-0.5" title="Hours allocated per day for this activity">
-            <input type="number" min={0.5} max={24} step={0.5}
-              className="w-7 text-[9px] bg-transparent focus:outline-none text-center text-purple-500 font-medium disabled:pointer-events-none"
-              disabled={fieldLocked} value={row.hoursPerDay ?? 8}
-              onChange={e => { if (!fieldLocked) p.onHPDChange(Number(e.target.value)) }}
-            />
-            <span className="text-[8px] text-gray-400 select-none">h/d</span>
-          </div>
+        </td>
+
+        {/* h/d */}
+        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center" rowSpan={2} title="Hours per day allocated">
+          <input type="number" min={0.5} max={24} step={0.5}
+            className="w-full text-[10px] bg-transparent focus:outline-none text-center text-purple-600 font-semibold disabled:pointer-events-none"
+            disabled={fieldLocked} value={row.hoursPerDay ?? 8}
+            onChange={e => { if (!fieldLocked) p.onHPDChange(Number(e.target.value)) }}
+          />
+        </td>
+
+        {/* Start date for auto-plotting */}
+        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center" rowSpan={2} title="Auto-plot start date">
+          <input type="date"
+            className="w-full text-[9px] bg-transparent focus:outline-none text-center text-green-700 disabled:pointer-events-none"
+            disabled={fieldLocked} value={row.startDate ?? ''}
+            onChange={e => { if (!fieldLocked) p.onStartDateChange(e.target.value) }}
+          />
         </td>
 
         {/* Working days */}

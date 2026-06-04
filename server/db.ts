@@ -67,3 +67,42 @@ db.exec(`
     updated_at  TEXT NOT NULL
   )
 `)
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS approvers (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    email      TEXT NOT NULL DEFAULT '',
+    position   TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  )
+`)
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS plan_versions (
+    id         TEXT PRIMARY KEY,
+    plan_id    TEXT NOT NULL,
+    version    TEXT NOT NULL,
+    event      TEXT NOT NULL DEFAULT '',
+    data       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+  )
+`)
+
+db.exec(`CREATE INDEX IF NOT EXISTS idx_plan_versions_plan ON plan_versions (plan_id, version)`)
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id            TEXT PRIMARY KEY,
+    plan_id       TEXT NOT NULL,
+    plan_title    TEXT NOT NULL DEFAULT '',
+    it_number     TEXT NOT NULL DEFAULT '',
+    plan_type     TEXT NOT NULL DEFAULT '',
+    view_link     TEXT NOT NULL DEFAULT '',
+    approvers     TEXT NOT NULL DEFAULT '[]',
+    published_at  TEXT NOT NULL,
+    dispatched    INTEGER NOT NULL DEFAULT 0,
+    dispatched_at TEXT
+  )
+`)

@@ -97,11 +97,14 @@ export async function exportToPDF(plan: ActivityPlan, selfCheck: SelfCheckTR) {
   let y = HDR_H + 4
   const persons = plan.persons as any
   const personsList = plan.personsList ?? []
-  const picName = personsList.length > 0
-    ? (personsList.find(p => ['Main Support', 'Developer'].includes(p.role))?.name ?? personsList[0]?.name ?? '')
-    : plan.type === 'development'
-      ? (persons.developer || persons.requestor || '')
-      : (persons.smartMember || persons.requestor || '')
+  const _stk = plan.stakeholders ?? []
+  const picName = _stk.length > 0
+    ? (_stk.find(s => s.roles.some(r => ['Support PIC', 'Main Support', 'Developer'].includes(r)))?.name ?? _stk[0]?.name ?? '')
+    : personsList.length > 0
+      ? (personsList.find(p => ['Support PIC', 'Main Support', 'Developer'].includes(p.role))?.name ?? personsList[0]?.name ?? '')
+      : plan.type === 'development'
+        ? (persons.developer || persons.requestor || '')
+        : (persons.smartMember || persons.requestor || '')
 
   // Plan Info ─────────────────────────────────────────────────────────────────
   y = sectionLabel(doc, 'Plan Information', y) + 2
@@ -142,15 +145,18 @@ export async function exportToPDF(plan: ActivityPlan, selfCheck: SelfCheckTR) {
   // Persons Involved ──────────────────────────────────────────────────────────
   y = sectionLabel(doc, 'Persons Involved', y) + 2
 
-  const allPersons: [string, string][] = personsList.length > 0
-    ? personsList.filter(p => p.name?.trim()).map(p => [p.role, p.name])
-    : (() => {
-        const core: [string, string][] = plan.type === 'development'
-          ? [['Requestor', persons.requestor], ['Designer', persons.designer], ['Developer', persons.developer], ['SE', persons.se], ['PM', persons.pm]]
-          : [['Requestor', persons.requestor], ['PIC', persons.smartMember], ['SE', persons.se], ['PM', persons.pm]]
-        const extra: [string, string][] = (plan.additionalPersons ?? []).map(p => [p.role, p.name])
-        return [...core, ...extra].filter(([, v]) => v)
-      })()
+  const stakeholders = plan.stakeholders ?? []
+  const allPersons: [string, string][] = stakeholders.length > 0
+    ? stakeholders.filter(s => s.name?.trim()).map(s => [s.roles.join(' / ') || '—', s.name])
+    : personsList.length > 0
+      ? personsList.filter(p => p.name?.trim()).map(p => [p.role, p.name])
+      : (() => {
+          const core: [string, string][] = plan.type === 'development'
+            ? [['Requestor', persons.requestor], ['Designer', persons.designer], ['Developer', persons.developer], ['SE', persons.se], ['PM', persons.pm]]
+            : [['Requestor', persons.requestor], ['PIC', persons.smartMember], ['SE', persons.se], ['PM', persons.pm]]
+          const extra: [string, string][] = (plan.additionalPersons ?? []).map(p => [p.role, p.name])
+          return [...core, ...extra].filter(([, v]) => v)
+        })()
   const PCOLS = Math.min(allPersons.length, 6) || 1
   const PCOL_W = MW / PCOLS
 

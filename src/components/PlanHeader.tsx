@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { ActivityPlan, MonthConfig, GroupType, PersonEntry } from '../types'
+import { } from 'react'
+import type { ActivityPlan, MonthConfig, GroupType, Stakeholder } from '../types'
 import { PERSON_ROLES } from '../types'
 import { monthLabel, syncDayMarks, generateDayMarks, calcPlanStatus, generateId } from '../utils'
 
@@ -24,23 +24,28 @@ const GROUP_STYLE: Record<GroupType, string> = {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  'Requestor':       'bg-sky-50 text-sky-700 border-sky-200',
-  'Main Support':    'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Sub Support':     'bg-teal-50 text-teal-700 border-teal-200',
-  'Developer':       'bg-indigo-50 text-indigo-700 border-indigo-200',
-  'Designer':        'bg-cyan-50 text-cyan-700 border-cyan-200',
-  'Sub Developer':   'bg-violet-50 text-violet-700 border-violet-200',
-  'Sub Designer':    'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
-  'SE':              'bg-purple-50 text-purple-700 border-purple-200',
-  'PM':              'bg-amber-50 text-amber-700 border-amber-200',
-  'Manager':         'bg-rose-50 text-rose-700 border-rose-200',
-  'Network-Support': 'bg-orange-50 text-orange-700 border-orange-200',
+  'Project Manager':         'bg-amber-50 text-amber-700 border-amber-200',
+  'Project Supervisor':      'bg-rose-50 text-rose-700 border-rose-200',
+  'Project Leader':          'bg-blue-50 text-blue-700 border-blue-200',
+  'Support Supervisor':      'bg-teal-50 text-teal-700 border-teal-200',
+  'System Expert':           'bg-purple-50 text-purple-700 border-purple-200',
+  'Support PIC':             'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Designer':                'bg-cyan-50 text-cyan-700 border-cyan-200',
+  'Developer':               'bg-indigo-50 text-indigo-700 border-indigo-200',
+  'Technical Reviewer':      'bg-slate-50 text-slate-700 border-slate-200',
+  'DBA/Release Support PIC': 'bg-violet-50 text-violet-700 border-violet-200',
+  'Gatepass PIC':            'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
+  'Requestor':               'bg-sky-50 text-sky-700 border-sky-200',
+  'Customer':                'bg-green-50 text-green-700 border-green-200',
+  // legacy
+  'Main Support':            'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'SE':                      'bg-purple-50 text-purple-700 border-purple-200',
+  'PM':                      'bg-amber-50 text-amber-700 border-amber-200',
 }
 
 export default function PlanHeader({ plan, onChange, readOnly }: Props) {
   const isDev = plan.type === 'development'
-  const [addRole, setAddRole] = useState<string>(PERSON_ROLES[0])
-  const personsList: PersonEntry[] = plan.personsList ?? []
+  const stakeholders: Stakeholder[] = plan.stakeholders ?? []
 
   function setField(field: string, value: string) {
     onChange({ ...plan, [field]: value })
@@ -73,20 +78,35 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
     applyMonthChange(plan.months.map((x, i) => (i === idx ? m : x)))
   }
 
-  function addPerson() {
-    const entry: PersonEntry = { id: generateId(), role: addRole, name: '' }
-    onChange({ ...plan, personsList: [...personsList, entry] })
+  function addStakeholder() {
+    const entry: Stakeholder = { id: generateId(), name: '', roles: [] }
+    onChange({ ...plan, stakeholders: [...stakeholders, entry] })
   }
 
-  function updatePerson(id: string, field: 'role' | 'name', value: string) {
+  function updateStakeholderName(id: string, name: string) {
+    onChange({ ...plan, stakeholders: stakeholders.map(s => s.id === id ? { ...s, name } : s) })
+  }
+
+  function addRoleToStakeholder(id: string, role: string) {
     onChange({
       ...plan,
-      personsList: personsList.map(p => p.id === id ? { ...p, [field]: value } : p),
+      stakeholders: stakeholders.map(s =>
+        s.id === id && !s.roles.includes(role) ? { ...s, roles: [...s.roles, role] } : s
+      ),
     })
   }
 
-  function removePerson(id: string) {
-    onChange({ ...plan, personsList: personsList.filter(p => p.id !== id) })
+  function removeRoleFromStakeholder(id: string, role: string) {
+    onChange({
+      ...plan,
+      stakeholders: stakeholders.map(s =>
+        s.id === id ? { ...s, roles: s.roles.filter(r => r !== role) } : s
+      ),
+    })
+  }
+
+  function removeStakeholder(id: string) {
+    onChange({ ...plan, stakeholders: stakeholders.filter(s => s.id !== id) })
   }
 
   const status = calcPlanStatus(plan)
@@ -200,74 +220,78 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
         </div>
       )}
 
-      {/* Persons Involved — dynamic */}
+      {/* Stakeholders */}
       <div>
-        <div className="flex items-center gap-1.5 mb-2">
-          <p className="text-xs font-medium text-gray-500">Persons Involved</p>
-          <span className="text-[10px] text-gray-400">→ shown in PIC dropdown</span>
-        </div>
-
-        {!readOnly && (
-          <div className="flex gap-1.5 mb-2">
-            <select
-              value={addRole}
-              onChange={e => setAddRole(e.target.value)}
-              className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white text-gray-700"
-            >
-              {PERSON_ROLES.map(r => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <p className="text-xs font-medium text-gray-500">Stakeholders</p>
+            <p className="text-[10px] text-gray-400">Roles shown in PIC dropdown</p>
+          </div>
+          {!readOnly && (
             <button
-              onClick={addPerson}
+              onClick={addStakeholder}
               className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1 hover:bg-blue-100 transition-colors font-medium shrink-0"
             >
-              + Add
+              + Person
             </button>
-          </div>
+          )}
+        </div>
+
+        {stakeholders.length === 0 && (
+          <p className="text-xs text-gray-400 italic">{readOnly ? 'No stakeholders added.' : 'Click + Person to add.'}</p>
         )}
 
-        {personsList.length === 0 && (
-          <p className="text-xs text-gray-400 italic">{readOnly ? 'No persons added.' : 'Select a role and click + Add.'}</p>
-        )}
+        <div className="space-y-2">
+          {stakeholders.map(s => (
+            <div key={s.id} className="border border-gray-100 rounded-lg p-2 bg-gray-50/50 space-y-1.5">
+              {/* Name row */}
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <input
+                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:bg-transparent disabled:border-transparent disabled:text-gray-600 font-medium"
+                  value={s.name}
+                  disabled={readOnly}
+                  onChange={e => updateStakeholderName(s.id, e.target.value)}
+                  placeholder="Full name"
+                />
+                {!readOnly && (
+                  <button onClick={() => removeStakeholder(s.id)} className="text-gray-300 hover:text-red-400 text-xs leading-none shrink-0 transition-colors" title="Remove person">✕</button>
+                )}
+              </div>
 
-        <div className="space-y-1.5">
-          {personsList.map(p => {
-            const chipColor = ROLE_COLORS[p.role] ?? 'bg-gray-50 text-gray-600 border-gray-200'
-            return (
-              <div key={p.id} className="flex items-center gap-1.5">
-                {readOnly ? (
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${chipColor}`}>{p.role}</span>
-                ) : (
+              {/* Roles row */}
+              <div className="flex flex-wrap items-center gap-1 pl-4">
+                {s.roles.map(role => {
+                  const cc = ROLE_COLORS[role] ?? 'bg-gray-100 text-gray-600 border-gray-200'
+                  return (
+                    <span key={role} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${cc}`}>
+                      {role}
+                      {!readOnly && (
+                        <button onClick={() => removeRoleFromStakeholder(s.id, role)} className="hover:text-red-500 ml-0.5 leading-none" title="Remove role">×</button>
+                      )}
+                    </span>
+                  )
+                })}
+                {!readOnly && (
                   <select
-                    value={p.role}
-                    onChange={e => updatePerson(p.id, 'role', e.target.value)}
-                    className={`text-[10px] font-semibold px-1.5 py-1 rounded-full border shrink-0 cursor-pointer focus:outline-none ${chipColor}`}
-                    style={{ WebkitAppearance: 'none' }}
+                    value=""
+                    onChange={e => { if (e.target.value) addRoleToStakeholder(s.id, e.target.value) }}
+                    className="text-[10px] text-blue-500 border border-dashed border-blue-300 rounded-full px-1.5 py-0.5 bg-white focus:outline-none cursor-pointer hover:border-blue-400 transition-colors"
                   >
-                    {PERSON_ROLES.map(r => (
+                    <option value="">+ Role</option>
+                    {PERSON_ROLES.filter(r => !s.roles.includes(r)).map(r => (
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>
                 )}
-                <input
-                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300 disabled:bg-gray-50 disabled:text-gray-500"
-                  value={p.name}
-                  disabled={readOnly}
-                  onChange={e => updatePerson(p.id, 'name', e.target.value)}
-                  placeholder="Full name"
-                />
-                {!readOnly && (
-                  <button
-                    onClick={() => removePerson(p.id)}
-                    className="text-gray-300 hover:text-red-400 text-xs leading-none shrink-0 transition-colors"
-                  >
-                    ✕
-                  </button>
+                {s.roles.length === 0 && readOnly && (
+                  <span className="text-[10px] text-gray-400 italic">No roles assigned</span>
                 )}
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
       </div>
 
