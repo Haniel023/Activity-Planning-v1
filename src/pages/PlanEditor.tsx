@@ -394,8 +394,8 @@ export default function PlanEditor() {
       <header className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm">
         <div className="px-4 py-2 flex items-center gap-3 flex-wrap">
           <button onClick={handleBack} className="text-gray-400 hover:text-gray-600 text-sm shrink-0">← Back</button>
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${isDev ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-            {isDev ? 'Development' : 'Support'}
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${isDev ? 'bg-blue-100 text-blue-700' : plan.type === 'training' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+            {isDev ? 'Development' : plan.type === 'training' ? 'Training' : 'Support'}
           </span>
           <span className="text-gray-700 font-medium text-sm truncate flex-1 min-w-0">
             {plan.title || <span className="text-gray-400 italic">Untitled Plan</span>}
@@ -591,6 +591,24 @@ export default function PlanEditor() {
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Override: clear stuck signatures */}
+                    {plan.status === 'ongoing_approval' && (
+                      <div className="mt-4 pt-3 border-t border-gray-100">
+                        <button
+                          onClick={async () => {
+                            if (!confirm('This will clear all reviewer signatures and restart the approval round. The PIC signature is kept. Continue?')) return
+                            await api.clearSignatures(plan.id)
+                            const { plan: fresh } = await api.getPlan(plan.id)
+                            setPlan(fresh)
+                          }}
+                          className="w-full text-[10px] text-gray-300 hover:text-red-400 hover:border-red-200 border border-gray-100 rounded py-1 transition-colors"
+                          title="Admin override — clears reviewer signatures to unstick a stuck plan"
+                        >
+                          Reset Reviewer Signatures
+                        </button>
                       </div>
                     )}
                   </>

@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Activity Planning Tool — Work Instruction</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      background: #fff;
+      line-height: 1.6;
+    }
+
+    /* ── Cover page ── */
+    .cover {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      text-align: center;
+      background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+      color: #fff;
+      padding: 60px 40px;
+      page-break-after: always;
+    }
+    .cover .doc-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 24px;
+    }
+    .cover h1 {
+      font-size: 38px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+    .cover .subtitle {
+      font-size: 16px;
+      opacity: 0.8;
+      margin-bottom: 48px;
+    }
+    .cover .meta {
+      font-size: 12px;
+      opacity: 0.6;
+      line-height: 2;
+    }
+    .cover .meta strong { opacity: 1; }
+
+    /* ── Layout ── */
+    .content {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 48px 32px;
+    }
+
+    /* ── TOC ── */
+    .toc {
+      background: #f8faff;
+      border: 1px solid #dde5f5;
+      border-radius: 8px;
+      padding: 28px 32px;
+      margin-bottom: 48px;
+      page-break-after: always;
+    }
+    .toc h2 {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #1e3a5f;
+      margin-bottom: 16px;
+    }
+    .toc ol { padding-left: 20px; }
+    .toc li { margin: 6px 0; }
+    .toc a { color: #2563eb; text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    .toc ol ol { margin-top: 4px; }
+    .toc ol ol li { font-size: 12px; margin: 3px 0; }
+
+    /* ── Sections ── */
+    .section {
+      margin-bottom: 52px;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #2563eb;
+    }
+    .section-num {
+      background: #2563eb;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .section-header h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e3a5f;
+    }
+
+    h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1e3a5f;
+      margin: 24px 0 10px;
+    }
+    h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin: 16px 0 8px;
+    }
+
+    p { margin-bottom: 10px; }
+
+    /* ── Steps ── */
+    .steps { counter-reset: step-counter; margin: 12px 0; }
+    .step {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 14px;
+      align-items: flex-start;
+    }
+    .step-num {
+      counter-increment: step-counter;
+      background: #eff6ff;
+      border: 1.5px solid #93c5fd;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 700;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-num::before { content: counter(step-counter); }
+    .step-body { flex: 1; }
+    .step-body strong { color: #111; }
+
+    /* ── Notes / Tips / Warnings ── */
+    .note, .tip, .warning, .info {
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 14px 0;
+      font-size: 12.5px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .note { background: #eff6ff; border-left: 4px solid #3b82f6; }
+    .tip  { background: #f0fdf4; border-left: 4px solid #22c55e; }
+    .warning { background: #fff7ed; border-left: 4px solid #f97316; }
+    .info { background: #faf5ff; border-left: 4px solid #a855f7; }
+    .note-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    /* ── Screenshots ── */
+    .screenshot-block {
+      margin: 20px 0;
+      text-align: center;
+    }
+    .screenshot-block img {
+      max-width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+    }
+    .screenshot-block .caption {
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: #6b7280;
+      font-style: italic;
+    }
+
+    /* ── Badge-style labels ── */
+    .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+    .badge-green  { background: #dcfce7; color: #15803d; }
+    .badge-orange { background: #ffedd5; color: #c2410c; }
+    .badge-red    { background: #fee2e2; color: #b91c1c; }
+    .badge-purple { background: #f3e8ff; color: #7e22ce; }
+    .badge-gray   { background: #f3f4f6; color: #4b5563; }
+
+    /* ── Tables ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      margin: 14px 0;
+    }
+    th {
+      background: #1e3a5f;
+      color: #fff;
+      text-align: left;
+      padding: 8px 12px;
+      font-weight: 600;
+    }
+    td { padding: 7px 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    tr:nth-child(even) td { background: #f9fafb; }
+
+    /* ── Status lifecycle diagram ── */
+    .lifecycle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin: 14px 0;
+      font-size: 12px;
+    }
+    .lc-box {
+      padding: 5px 12px;
+      border-radius: 5px;
+      font-weight: 600;
+      font-size: 11.5px;
+    }
+    .lc-arrow { color: #9ca3af; font-size: 14px; }
+
+    /* ── Print ── */
+    @media print {
+      .cover { page-break-after: always; min-height: auto; padding: 40px; }
+      .toc   { page-break-after: always; }
+      .section { page-break-inside: avoid; }
+      .screenshot-block img { max-height: 420px; object-fit: contain; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     COVER PAGE
+════════════════════════════════════════ -->
+<div class="cover">
+  <div class="doc-label">Work Instruction</div>
+  <h1>Activity Planning Tool</h1>
+  <div class="subtitle">Step-by-step guide for creating, approving, and tracking activity plans</div>
+  <div class="meta">
+    <strong>Document Type:</strong> Work Instruction<br>
+    <strong>System:</strong> Activity Planning Web Application<br>
+    <strong>Intended for:</strong> All users (PICs, Project Leaders, Approvers)<br>
+    <strong>Date:</strong> June 2026
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MAIN CONTENT
+════════════════════════════════════════ -->
+<div class="content">
+
+  <!-- TABLE OF CONTENTS -->
+  <div class="toc">
+    <h2>Table of Contents</h2>
+    <ol>
+      <li><a href="#s1">Overview</a></li>
+      <li><a href="#s2">Accessing the Application</a></li>
+      <li>
+        <a href="#s3">Dashboard</a>
+        <ol>
+          <li><a href="#s3-plans">Plans Tab</a></li>
+          <li><a href="#s3-analytics">Analytics Tab</a></li>
+          <li><a href="#s3-requests">Requests Tab</a></li>
+          <li><a href="#s3-settings">Settings Tab</a></li>
+        </ol>
+      </li>
+      <li>
+        <a href="#s4">Creating a New Activity Plan</a>
+        <ol>
+          <li><a href="#s4-type">Step 1 — Choose Plan Type</a></li>
+          <li><a href="#s4-details">Step 2 — Fill in Plan Details</a></li>
+          <li><a href="#s4-activities">Step 3 — Set Up Activities &amp; Schedule</a></li>
+          <li><a href="#s4-selfcheck">Step 4 — Complete Self-Check / TR</a></li>
+          <li><a href="#s4-approval-setup">Step 5 — Assign Approvers</a></li>
+          <li><a href="#s4-save">Step 6 — Save the Plan</a></li>
+        </ol>
+      </li>
+      <li><a href="#s5">Submitting a Plan for Approval</a></li>
+      <li><a href="#s6">Approval Process (For Approvers)</a></li>
+      <li><a href="#s7">Revision Process</a></li>
+      <li><a href="#s8">Tracking Progress on a Published Plan</a></li>
+      <li><a href="#s9">Exporting Plans</a></li>
+      <li><a href="#s10">Managing Requests</a></li>
+      <li><a href="#s11">Settings — Approvers &amp; Holidays</a></li>
+      <li><a href="#s12">Plan Status Reference</a></li>
+    </ol>
+  </div>
+
+
+  <!-- ══ SECTION 1 ══ -->
+  <div class="section" id="s1">
+    <div class="section-header">
+      <div class="section-num">1</div>
+      <h2>Overview</h2>
+    </div>
+    <p>
+      The <strong>Activity Planning Tool</strong> is a web-based system for creating, managing, and tracking
+      IT activity plans. It replaces manual Excel-based workflows by providing structured plan creation,
+      a multi-stage digital approval process, real-time progress tracking, and export capabilities.
+    </p>
+    <table>
+      <tr><th>Feature</th><th>Description</th></tr>
+      <tr><td><strong>Plan Types</strong></td><td>Development Plan, Support Plan</td></tr>
+      <tr><td><strong>Approval Workflow</strong></td><td>Multi-stage: Prepared By → Reviewed By → Approved By (up to 4 signatories)</td></tr>
+      <tr><td><strong>Progress Tracking</strong></td><td>Daily/weekly day marks, status per activity, insights forecast</td></tr>
+      <tr><td><strong>Exports</strong></td><td>Excel (.xlsx) and PDF</td></tr>
+      <tr><td><strong>Notifications</strong></td><td>Email notifications at each workflow step; Teams integration via Power Automate</td></tr>
+    </table>
+    <div class="note">
+      <span class="note-icon">ℹ️</span>
+      <span>All plans are saved to a central server. Any team member with the link can view a plan. Editing is restricted to the PIC while the plan is in Draft or For Revision status.</span>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 2 ══ -->
+  <div class="section" id="s2">
+    <div class="section-header">
+      <div class="section-num">2</div>
+      <h2>Accessing the Application</h2>
+    </div>
+    <p>Open a web browser and go to the Activity Planning Tool URL provided by your administrator.</p>
+    <p>The system opens directly to the <strong>Dashboard</strong> — no login is required. Plans are shared across all users on the same server.</p>
+    <div class="tip">
+      <span class="note-icon">💡</span>
+      <span>Bookmark the URL for quick access. You can also share a direct link to any individual plan using the <strong>Link</strong> button on the dashboard.</span>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 3 ══ -->
+  <div class="section" id="s3">
+    <div class="section-header">
+      <div class="section-num">3</div>
+      <h2>Dashboard</h2>
+    </div>
+    <p>The Dashboard is the home screen. It contains four tabs: <strong>Plans</strong>, <strong>Analytics</strong>, <strong>Requests</strong>, and <strong>Settings</strong>.</p>
+
+    <h3 id="s3-plans">3.1 Plans Tab</h3>
+    <p>Displays all activity plans. Each row shows the plan title, IT number, version, status, group, progress, PIC, and last update date.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/01_dashboard.png" alt="Dashboard — Plans Tab" />
+      <div class="caption">Figure 1 — Dashboard: Plans Tab showing all plans with status and progress</div>
+    </div>
+
+    <h4>Available Controls</h4>
+    <table>
+      <tr><th>Control</th><th>Function</th></tr>
+      <tr><td>Search bar</td><td>Filter plans by title or IT number</td></tr>
+      <tr><td><span class="badge badge-gray">All Types</span> / <span class="badge badge-blue">Development</span> / <span class="badge badge-green">Support</span></td><td>Filter by plan type</td></tr>
+      <tr><td>All Status dropdown</td><td>Filter by plan status (Draft, Ongoing Approval, Published, etc.)</td></tr>
+      <tr><td><strong>Open</strong> button</td><td>Open and edit/view a plan</td></tr>
+      <tr><td><strong>Link</strong> button</td><td>Copy a direct link to the plan for sharing</td></tr>
+      <tr><td>Trash icon</td><td>Delete a plan (Draft status only)</td></tr>
+      <tr><td><strong>+ New Plan</strong></td><td>Create a new activity plan</td></tr>
+      <tr><td><strong>Holidays</strong></td><td>Manage the company holiday calendar</td></tr>
+    </table>
+
+    <h4>Status Indicators</h4>
+    <table>
+      <tr><th>Badge</th><th>Meaning</th></tr>
+      <tr><td><span class="badge badge-gray">Draft</span></td><td>Plan is being prepared, not yet submitted</td></tr>
+      <tr><td><span class="badge badge-purple">Ongoing Approval</span></td><td>Submitted and awaiting signatures from approvers</td></tr>
+      <tr><td><span class="badge badge-orange">For Revision</span></td><td>Sent back by an approver for corrections</td></tr>
+      <tr><td><span class="badge badge-blue">Published</span></td><td>Fully approved; progress tracking is active</td></tr>
+      <tr><td><span class="badge badge-red">Rejected</span></td><td>Rejected by an approver (terminal state)</td></tr>
+      <tr><td><span class="badge badge-gray">Cancelled</span></td><td>Cancelled by the PIC (terminal state)</td></tr>
+    </table>
+
+    <h4>Project Status Indicators</h4>
+    <table>
+      <tr><th>Label</th><th>Meaning</th></tr>
+      <tr><td><span class="badge badge-blue">ON TIME</span></td><td>Actual progress matches or exceeds planned progress</td></tr>
+      <tr><td><span class="badge badge-orange">AT RISK</span></td><td>Slightly behind schedule</td></tr>
+      <tr><td><span class="badge badge-red">DELAYED</span></td><td>Significantly behind schedule</td></tr>
+      <tr><td><span class="badge badge-green">COMPLETE</span></td><td>All activities are done</td></tr>
+      <tr><td><span class="badge badge-gray">NOT STARTED</span></td><td>No actual progress recorded yet</td></tr>
+    </table>
+
+    <h3 id="s3-analytics">3.2 Analytics Tab</h3>
+    <p>Provides a group-level performance overview. Cards show plan count, average progress, and status breakdown per group (SMART, DEV, NETWORK). Click a card to filter the table below it.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/02_analytics.png" alt="Analytics Tab" />
+      <div class="caption">Figure 2 — Analytics Tab: Group Performance Overview</div>
+    </div>
+
+    <h3 id="s3-requests">3.3 Requests Tab</h3>
+    <p>A backlog for logging activity requests before a formal plan is created. Useful for capturing requested work items and their target dates.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/03_requests.png" alt="Requests Tab" />
+      <div class="caption">Figure 3 — Requests Tab: Activity request backlog</div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>+ New Request</strong> to log a new activity request.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Fill in the title, description, IT number, PIC, target date, and requester.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Once the request is ready to become a plan, click <strong>Make Plan</strong> on the request card.</div></div>
+    </div>
+
+    <h3 id="s3-settings">3.4 Settings Tab</h3>
+    <p>Manages the master list of approvers used in the approval dropdowns across all plans.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/04_settings.png" alt="Settings Tab" />
+      <div class="caption">Figure 4 — Settings Tab: Approver List</div>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 4 ══ -->
+  <div class="section" id="s4">
+    <div class="section-header">
+      <div class="section-num">4</div>
+      <h2>Creating a New Activity Plan</h2>
+    </div>
+
+    <h3 id="s4-type">Step 1 — Choose Plan Type</h3>
+    <p>Click <strong>+ New Plan</strong> on the top-right of the dashboard. A dialog appears with two options:</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/06_plan_type_select.png" alt="New Activity Plan — Type Selection" />
+      <div class="caption">Figure 5 — Selecting a plan type when creating a new plan</div>
+    </div>
+
+    <table>
+      <tr><th>Plan Type</th><th>Use When</th><th>Default Phases</th></tr>
+      <tr>
+        <td><strong>Development Plan</strong></td>
+        <td>Starting a new development project</td>
+        <td>Preparation · Design · Development · Testing · Implementation</td>
+      </tr>
+      <tr>
+        <td><strong>Support Plan</strong></td>
+        <td>Handling support, investigation, or bug-fix work</td>
+        <td>Preparation · Investigation · Fixing · Documentation · Cascading</td>
+      </tr>
+    </table>
+
+    <div class="note">
+      <span class="note-icon">ℹ️</span>
+      <span>The plan type cannot be changed after creation. Phases and activity numbering are automatically set based on the type selected.</span>
+    </div>
+
+    <h3 id="s4-details">Step 2 — Fill in Plan Details</h3>
+    <p>After choosing the plan type, the Plan Editor opens. Click the <strong>Plan Details</strong> tab on the left sidebar to fill in the basic information.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/10_plan_details_tab.png" alt="Plan Details Tab" />
+      <div class="caption">Figure 6 — Plan Details Tab: project metadata and calendar setup</div>
+    </div>
+
+    <table>
+      <tr><th>Field</th><th>Description</th><th>Required</th></tr>
+      <tr><td><strong>Project Title</strong></td><td>The full name of the project or task</td><td>Yes</td></tr>
+      <tr><td><strong>IT Number</strong></td><td>The IT ticket or reference number (e.g. IT-2026-001)</td><td>Yes</td></tr>
+      <tr><td><strong>Version</strong></td><td>Auto-filled (starts at 1.00). Increments on revision.</td><td>Auto</td></tr>
+      <tr><td><strong>Type</strong></td><td>Development or Support (set at creation, read-only)</td><td>Auto</td></tr>
+      <tr><td><strong>Group</strong></td><td>Select your team group: SMART, DEV, or NETWORK</td><td>Yes</td></tr>
+      <tr><td><strong>Target Date</strong></td><td>Expected project completion date</td><td>Yes</td></tr>
+      <tr><td><strong>Stakeholders / Persons</strong></td><td>Click <strong>+ Person</strong> to add team members. Names appear in the PIC dropdown on the activity table.</td><td>Yes</td></tr>
+      <tr><td><strong>Calendar Months</strong></td><td>Click <strong>+ Add</strong> to add the months your project spans. The activity schedule grid is built from these months.</td><td>Yes</td></tr>
+    </table>
+
+    <div class="tip">
+      <span class="note-icon">💡</span>
+      <span>Add all persons who will be assigned to activities in the <strong>Stakeholders</strong> section first. Their names will appear as options when assigning PICs in the activity table.</span>
+    </div>
+
+    <h3 id="s4-activities">Step 3 — Set Up Activities &amp; Schedule</h3>
+    <p>Click the <strong>Activity Plan</strong> tab (top center) to manage the activity table. This is the core of the plan.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/07_plan_editor_new.png" alt="Plan Editor — Activity Table" />
+      <div class="caption">Figure 7 — Plan Editor: Activity table with phases, RACI, and schedule columns</div>
+    </div>
+
+    <h4>Adding Phases and Activities</h4>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>+ Phase</strong> to add a new phase section (e.g. "3.0 Development").</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>+ Activity</strong> to add a new activity row under the current phase. Activities are auto-numbered (e.g. 3.1, 3.2).</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Type the activity name directly in the <strong>Activity</strong> column.</div></div>
+    </div>
+
+    <h4>Activity Table Columns</h4>
+    <table>
+      <tr><th>Column</th><th>Description</th></tr>
+      <tr><td><strong>#</strong></td><td>Auto-assigned activity number (e.g. 1.1, 2.3)</td></tr>
+      <tr><td><strong>Activity</strong></td><td>Name/description of the task</td></tr>
+      <tr><td><strong>PIC</strong></td><td>Click <em>+ add PIC</em> to assign a person from the stakeholders list</td></tr>
+      <tr><td><strong>Responsibility (R/A/C/I)</strong></td><td>Check boxes to assign RACI roles per activity</td></tr>
+      <tr><td><strong>Status</strong></td><td>Dropdown: Not Yet Started / Ongoing / Done / On Hold</td></tr>
+      <tr><td><strong>%</strong></td><td>Manual progress percentage (0–100)</td></tr>
+      <tr><td><strong>MH</strong></td><td>Man-hours (auto-calculated or manual)</td></tr>
+      <tr><td><strong>h/d</strong></td><td>Hours per day for this activity (default: 8)</td></tr>
+      <tr><td><strong>Start</strong></td><td>Scheduled start date for the activity</td></tr>
+      <tr><td><strong>Days</strong></td><td>Auto-calculated working days from the day marks</td></tr>
+      <tr><td><strong>Plan row</strong></td><td>Click calendar cells in the <strong>Plan</strong> row to mark planned working days (blue)</td></tr>
+      <tr><td><strong>Actual row</strong></td><td>Click calendar cells in the <strong>Actual</strong> row to mark days actually worked (orange, visible on Published plans)</td></tr>
+    </table>
+
+    <h4>Calendar View Options</h4>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Toggle between <strong>Daily</strong> and <strong>Weekly</strong> views using the buttons next to "Activity Plan".</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Scroll the calendar horizontally to navigate months.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Weekend columns are shaded. Holiday columns are highlighted in orange — they cannot be marked as planned days (unless it is emergency OT for published plans).</div></div>
+    </div>
+
+    <div class="tip">
+      <span class="note-icon">💡</span>
+      <span>Check the <strong>OT</strong> indicator at the top of the table — it shows total man-hours and percentage of overtime. The <strong>Holidays</strong> button (top-right of the grid) shows current holidays affecting your calendar.</span>
+    </div>
+
+    <h3 id="s4-selfcheck">Step 4 — Complete Self-Check / TR</h3>
+    <p>Click the <strong>Self Check / TR</strong> button at the top of the page. This is the quality checklist that must be completed before submission.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/11_self_check.png" alt="Self Check / TR Tab" />
+      <div class="caption">Figure 8 — Self Check / Technical Review checklist with 10 quality checkpoints</div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Enter the <strong>Self Check PIC</strong> name (the RA Incharge) and the <strong>TR PIC</strong> name (Project Leader / SE) in the fields at the top right.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">For each of the 10 checkpoints, use the dropdowns to record the result for <strong>Self Check 1st Round</strong>, <strong>2nd Round</strong>, <strong>Technical Review 1st Round</strong>, and <strong>2nd Round</strong>.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Add remarks in the <strong>Remarks</strong> column for any checkpoint that requires clarification.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Use <strong>+ Add Checkpoint</strong> to add custom checkpoints beyond the default 10.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">In the <strong>Version Control</strong> section at the bottom, fill in the reason for this version and the updated date.</div></div>
+    </div>
+
+    <h4>Default Checkpoints</h4>
+    <table>
+      <tr><th>#</th><th>Checkpoint</th><th>Expected Result</th></tr>
+      <tr><td>1</td><td>Basic Requirement</td><td>Title should have input</td></tr>
+      <tr><td>2</td><td>Core Team Input</td><td>Roles / PIC should have input</td></tr>
+      <tr><td>3</td><td>Activity Details</td><td>Activities with input and should be detailed</td></tr>
+      <tr><td>4</td><td>Activity PIC</td><td>PIC per Activity should be indicated</td></tr>
+      <tr><td>5</td><td>Activity Schedule</td><td>With exact date input &amp; plotted</td></tr>
+      <tr><td>6</td><td>Legend/s</td><td>Legend should be correct</td></tr>
+      <tr><td>7</td><td>Template Version</td><td>Latest version</td></tr>
+      <tr><td>8</td><td>Date Format</td><td>YYYY-MM-DD</td></tr>
+      <tr><td>9</td><td>Signatures</td><td>Should be complete / at least with PIC Signature</td></tr>
+      <tr><td>10</td><td>NG Result</td><td>Should be logged/updated in Quality Log</td></tr>
+    </table>
+
+    <h3 id="s4-approval-setup">Step 5 — Assign Approvers</h3>
+    <p>Click the <strong>Approval</strong> tab on the left sidebar to configure the approval chain.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/07_plan_editor_new.png" alt="Approval Section" />
+      <div class="caption">Figure 9 — Approval section: Four approval slots on the left sidebar</div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Under <strong>PREPARED BY</strong>: Enter your name, email, and your role (PIC). Your signature can be uploaded via the view link later.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Under <strong>REVIEWED BY (PROJECT LEADER)</strong>: Select the project leader from the dropdown. Their name and position will auto-fill.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Under <strong>APPROVED BY (SUPERVISOR)</strong>: Select the supervisor approver from the dropdown.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Under <strong>APPROVED BY (SECTION MANAGER)</strong>: Select the section manager from the dropdown.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">(Optional) Check <strong>Requires Department Manager approval</strong> if a 5th approval slot is needed.</div></div>
+    </div>
+
+    <div class="note">
+      <span class="note-icon">ℹ️</span>
+      <span>Approvers in the dropdown are managed in <strong>Settings → Approver List</strong>. Contact your administrator if an approver is missing.</span>
+    </div>
+
+    <h3 id="s4-save">Step 6 — Save the Plan</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click the <strong>Save</strong> button (top-right) at any time to save your progress. The plan remains in <span class="badge badge-gray">Draft</span> status until submitted.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Use <strong>Version Up</strong> if you want to manually increment the version number without going through the approval workflow.</div></div>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 5 ══ -->
+  <div class="section" id="s5">
+    <div class="section-header">
+      <div class="section-num">5</div>
+      <h2>Submitting a Plan for Approval</h2>
+    </div>
+
+    <p>Once the plan, activity table, and self-check are complete, submit it for approval.</p>
+
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Review all activities, PICs, planned day marks, and self-check results one final time.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click the <strong>Submit</strong> button (top-right, blue).</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">A confirmation dialog will appear. Confirm the submission.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">The plan status changes to <span class="badge badge-purple">Ongoing Approval</span>.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">An email notification is automatically sent to all assigned approvers with a link to the read-only approval view. A Teams notification is also dispatched if Power Automate is configured.</div></div>
+    </div>
+
+    <div class="warning">
+      <span class="note-icon">⚠️</span>
+      <span>Once submitted, the plan is <strong>locked for editing</strong>. Only approvers can act on it (sign or send back). To make changes, an approver must send it back for revision first.</span>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 6 ══ -->
+  <div class="section" id="s6">
+    <div class="section-header">
+      <div class="section-num">6</div>
+      <h2>Approval Process (For Approvers)</h2>
+    </div>
+
+    <p>Approvers receive an email with a direct link to the read-only plan view. They do not need to log in to sign the plan.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/12_plan_with_progress.png" alt="Published Plan with Signatures" />
+      <div class="caption">Figure 10 — A fully approved (Published) plan showing digital signatures from all approvers</div>
+    </div>
+
+    <h3>How to Sign a Plan</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Open the link from the email (or Teams notification). The plan opens in read-only view.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Review the activity table and self-check checklist carefully.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">In your approval slot, click <strong>click to upload signature</strong> to upload your digital signature image.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Add optional <strong>Remarks</strong> in the remarks field below your slot.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Approve</strong> to sign. Your slot shows a green <strong>✓ Signed</strong> badge with the date.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">An email is automatically sent to the next approver in the chain.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">When all approvers have signed, the plan is automatically <span class="badge badge-blue">Published</span>.</div></div>
+    </div>
+
+    <h3>Sending Back for Revision</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">If corrections are needed, click <strong>Send Back for Revision</strong> instead of Approve.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Enter the reason for revision in the remarks field.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">The plan status changes to <span class="badge badge-orange">For Revision</span> and the PIC is notified by email.</div></div>
+    </div>
+
+    <div class="tip">
+      <span class="note-icon">💡</span>
+      <span>The signature image should be a clear PNG or JPG of a handwritten signature on a white background. Signatures are stored securely within the plan record.</span>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 7 ══ -->
+  <div class="section" id="s7">
+    <div class="section-header">
+      <div class="section-num">7</div>
+      <h2>Revision Process</h2>
+    </div>
+
+    <p>When a plan is sent back for revision, the PIC receives an email notification and the plan status changes to <span class="badge badge-orange">For Revision</span>.</p>
+
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Open the plan from the dashboard (click <strong>Open</strong>).</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Read the approver's remarks in the Approval sidebar.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Make the required corrections to the activity table, plan details, or self-check.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Save</strong> to save your changes.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Submit</strong> again to resubmit. The version number automatically increments (e.g. v1.00 → v2.00).</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">The approval process restarts from the beginning — all approvers must sign again.</div></div>
+    </div>
+
+    <div class="note">
+      <span class="note-icon">ℹ️</span>
+      <span>Every version is stored in the <strong>Version History</strong> panel (bottom of the Approval sidebar). Click <strong>Changes</strong> next to any version to see what was modified between versions.</span>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 8 ══ -->
+  <div class="section" id="s8">
+    <div class="section-header">
+      <div class="section-num">8</div>
+      <h2>Tracking Progress on a Published Plan</h2>
+    </div>
+
+    <p>Once a plan is <span class="badge badge-blue">Published</span>, the PIC can start recording actual progress. The top bar shows additional buttons: <strong>Save Progress</strong>, <strong>Share</strong>, <strong>Insights</strong>, and <strong>Updates</strong>.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/12_plan_with_progress.png" alt="Published Plan with Progress Tracking" />
+      <div class="caption">Figure 11 — A published plan: Actual day marks, signatures visible, and progress tracking active</div>
+    </div>
+
+    <h3>Recording Actual Days Worked</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">In the activity table, locate the <strong>Actual</strong> row (orange label) for each activity.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click the calendar cells in the <strong>Actual</strong> row to mark the days you actually worked on that activity.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Update the <strong>Status</strong> dropdown for each activity (Not Yet Started / Ongoing / Done / On Hold).</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Adjust the <strong>%</strong> field if needed to manually set a progress percentage.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Save Progress</strong> to save actual day marks. This does not change the plan version.</div></div>
+    </div>
+
+    <div class="note">
+      <span class="note-icon">ℹ️</span>
+      <span>On published plans, only the <strong>Actual row, Status, and %</strong> can be edited. The Plan row (blue) is locked and cannot be changed after approval.</span>
+    </div>
+
+    <h3>Viewing Insights (Forecast)</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Insights</strong> in the top bar. A panel slides in from the right.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">The panel shows a forecast status (<span class="badge badge-blue">ON TIME</span> / <span class="badge badge-orange">AT RISK</span> / <span class="badge badge-red">DELAYED</span>) and an activity-level breakdown.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Activities behind schedule are highlighted so you can focus remediation efforts.</div></div>
+    </div>
+
+    <h3>Progress Updates Log</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Updates</strong> in the top bar. A chat-like log panel opens.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Type a progress remark and optionally link it to a specific activity.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Press <strong>Post</strong>. The entry is saved with your name and a timestamp.</div></div>
+    </div>
+
+    <h3>Sharing a Published Plan</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Share</strong> to copy the read-only view URL.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Send the link to stakeholders. They can view the full plan, signatures, and progress without being able to edit anything.</div></div>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 9 ══ -->
+  <div class="section" id="s9">
+    <div class="section-header">
+      <div class="section-num">9</div>
+      <h2>Exporting Plans</h2>
+    </div>
+
+    <p>Plans can be exported at any stage (Draft, Approval, or Published) using the <strong>Export</strong> button (top-right, green).</p>
+
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click the <strong>Export</strong> dropdown button (green, top-right).</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Select <strong>Export Excel</strong> or <strong>Export PDF</strong>.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">The file downloads automatically to your default download folder.</div></div>
+    </div>
+
+    <table>
+      <tr><th>Format</th><th>Contents</th><th>Best For</th></tr>
+      <tr>
+        <td><strong>Excel (.xlsx)</strong></td>
+        <td>Color-coded activity table, RACI matrix, approval signatures, self-check checklist. Frozen panes for easy scrolling.</td>
+        <td>Detailed review, archiving, data analysis</td>
+      </tr>
+      <tr>
+        <td><strong>PDF</strong></td>
+        <td>Formatted plan document with all activities, schedule, signatures and self-check. Multi-page support.</td>
+        <td>Printing, formal submission, email attachment</td>
+      </tr>
+    </table>
+  </div>
+
+
+  <!-- ══ SECTION 10 ══ -->
+  <div class="section" id="s10">
+    <div class="section-header">
+      <div class="section-num">10</div>
+      <h2>Managing Requests</h2>
+    </div>
+
+    <p>The Requests tab serves as an activity backlog for logging work requests before they become formal plans.</p>
+
+    <h3>Create a New Request</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Go to <strong>Requests</strong> tab → click <strong>+ New Request</strong>.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Fill in: Title, Description, IT Number, PIC, Target Date, Requested By.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Save</strong>. The request appears as <span class="badge badge-blue">Open</span>.</div></div>
+    </div>
+
+    <h3>Convert a Request to a Plan</h3>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Find the request card and click <strong>Make Plan</strong>.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Choose the plan type (Development or Support).</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">The system creates a new plan pre-filled with the request details. The request status changes to <span class="badge badge-purple">In Progress</span>.</div></div>
+    </div>
+
+    <h3>Request Status</h3>
+    <table>
+      <tr><th>Status</th><th>Meaning</th></tr>
+      <tr><td><span class="badge badge-blue">Open</span></td><td>Logged but not yet acted upon</td></tr>
+      <tr><td><span class="badge badge-purple">In Progress</span></td><td>A plan has been created from this request</td></tr>
+      <tr><td><span class="badge badge-green">Done</span></td><td>Request has been completed</td></tr>
+    </table>
+  </div>
+
+
+  <!-- ══ SECTION 11 ══ -->
+  <div class="section" id="s11">
+    <div class="section-header">
+      <div class="section-num">11</div>
+      <h2>Settings — Approvers &amp; Holidays</h2>
+    </div>
+
+    <h3>Managing Approvers</h3>
+    <p>Go to <strong>Settings</strong> tab. The Approver List shows all pre-configured approvers available in the approval dropdowns.</p>
+
+    <div class="screenshot-block">
+      <img src="screenshots/04_settings.png" alt="Settings — Approver List" />
+      <div class="caption">Figure 12 — Settings Tab: Managing the approver master list</div>
+    </div>
+
+    <h4>Add an Approver</h4>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Fill in <strong>Full Name</strong>, <strong>M365 Email</strong>, and <strong>Position / Role</strong> (Project Leader, Supervisor, Section Manager, or Department Manager).</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>+ Add Approver</strong>. The approver appears in the list and in the plan approval dropdowns immediately.</div></div>
+    </div>
+
+    <h4>Edit or Delete an Approver</h4>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Edit</strong> next to the approver to modify their name, email, or position.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>Delete</strong> to remove an approver. This does not affect existing plans that already used that approver.</div></div>
+    </div>
+
+    <div class="warning">
+      <span class="note-icon">⚠️</span>
+      <span>The email stored for each approver is used by Power Automate to @mention them in Teams notifications. Make sure to use the correct Microsoft 365 email address.</span>
+    </div>
+
+    <h3>Managing Company Holidays</h3>
+    <p>Click <strong>Holidays</strong> (top-right of the dashboard) to open the holiday manager.</p>
+    <div class="steps">
+      <div class="step"><div class="step-num"></div><div class="step-body">Click <strong>+ Add Holiday</strong> and enter the date and holiday name.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">The date is immediately excluded from working-day calculations across all plans.</div></div>
+      <div class="step"><div class="step-num"></div><div class="step-body">To remove a holiday, click the delete icon next to it.</div></div>
+    </div>
+    <div class="note">
+      <span class="note-icon">ℹ️</span>
+      <span>Holidays are shown in orange in the plan calendar. Weekends (Saturday and Sunday) are automatically excluded and shown in a shaded column.</span>
+    </div>
+  </div>
+
+
+  <!-- ══ SECTION 12 ══ -->
+  <div class="section" id="s12">
+    <div class="section-header">
+      <div class="section-num">12</div>
+      <h2>Plan Status Reference</h2>
+    </div>
+
+    <h3>Plan Lifecycle</h3>
+    <div class="lifecycle">
+      <span class="lc-box badge-gray">Draft</span>
+      <span class="lc-arrow">→</span>
+      <span class="lc-box badge-purple">Ongoing Approval</span>
+      <span class="lc-arrow">⇄</span>
+      <span class="lc-box badge-orange">For Revision</span>
+      <span class="lc-arrow">→</span>
+      <span class="lc-box badge-blue">Published</span>
+    </div>
+    <p style="margin-top:8px; font-size:12px; color:#6b7280;">
+      From <em>Ongoing Approval</em>, a plan can also be → <span class="badge badge-red">Rejected</span> (terminal) or cancelled by the PIC → <span class="badge badge-gray">Cancelled</span> (terminal).
+    </p>
+
+    <table style="margin-top:20px">
+      <tr><th>Status</th><th>Who Can Act</th><th>What Can Be Done</th></tr>
+      <tr>
+        <td><span class="badge badge-gray">Draft</span></td>
+        <td>PIC</td>
+        <td>Edit all fields, save, submit for approval, delete</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">Ongoing Approval</span></td>
+        <td>Approvers</td>
+        <td>Sign (approve), send back for revision, reject</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-orange">For Revision</span></td>
+        <td>PIC</td>
+        <td>Edit all fields, save, resubmit (version increments)</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-blue">Published</span></td>
+        <td>PIC</td>
+        <td>Mark actual days, update status/%, post updates, export, share</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-red">Rejected</span></td>
+        <td>—</td>
+        <td>Read-only. No further action possible.</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-gray">Cancelled</span></td>
+        <td>—</td>
+        <td>Read-only. No further action possible.</td>
+      </tr>
+    </table>
+
+    <h3 style="margin-top:28px">Quick Reference — Buttons by Plan State</h3>
+    <table>
+      <tr><th>Button</th><th>Available When</th><th>Action</th></tr>
+      <tr><td><strong>Save</strong></td><td>Draft, For Revision</td><td>Saves all changes without changing status</td></tr>
+      <tr><td><strong>Submit</strong></td><td>Draft, For Revision</td><td>Submits for approval; locks editing</td></tr>
+      <tr><td><strong>Version Up</strong></td><td>Draft, For Revision</td><td>Manually increments version number</td></tr>
+      <tr><td><strong>Save Progress</strong></td><td>Published</td><td>Saves actual day marks and status updates</td></tr>
+      <tr><td><strong>Share</strong></td><td>Published</td><td>Copies the read-only view link</td></tr>
+      <tr><td><strong>Insights</strong></td><td>Published</td><td>Opens the progress forecast panel</td></tr>
+      <tr><td><strong>Updates</strong></td><td>Published</td><td>Opens the progress remarks log</td></tr>
+      <tr><td><strong>Export</strong></td><td>All states</td><td>Downloads Excel or PDF copy of the plan</td></tr>
+    </table>
+  </div>
+
+  <hr style="border:none; border-top:1px solid #e5e7eb; margin:40px 0 24px;" />
+  <p style="text-align:center; font-size:11px; color:#9ca3af;">
+    Activity Planning Tool — Work Instruction &nbsp;|&nbsp; June 2026 &nbsp;|&nbsp; Internal Use Only
+  </p>
+
+</div><!-- /content -->
+</body>
+</html>

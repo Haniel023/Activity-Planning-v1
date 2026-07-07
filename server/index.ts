@@ -68,6 +68,7 @@ app.get('/api/plans', (_req, res) => {
       picName: data.approvals?.preparedBy?.name || '',
       itNumber: data.itNumber ?? '',
       groupType: data.groupType ?? null,
+      startDate: data.startDate ?? null,
       targetDate: data.targetDate ?? null,
       months: data.months ?? [],
       activities: data.activities ?? [],
@@ -232,6 +233,16 @@ app.post('/api/plans/:id/republish', (req, res) => {
     ...(data.versionHistory || []),
     { version: newVersion, date: new Date().toISOString().slice(0, 10), reason: 'Re-submitted for approval after revision', by: req.body.by || '' },
   ]
+  // Clear reviewer signatures so the approval round restarts fresh
+  const reviewSlots = ['reviewedBy', 'approvedBy1', 'approvedBy2', 'approvedBy3'] as const
+  for (const slot of reviewSlots) {
+    if (data.approvals?.[slot]) {
+      data.approvals[slot].signatureImage = undefined
+      data.approvals[slot].approvedAt = undefined
+      data.approvals[slot].sentForRevision = undefined
+      data.approvals[slot].revisionReason = undefined
+    }
+  }
   db.prepare(`
     UPDATE plans SET status = 'ongoing_approval', version = ?, published_at = ?, data = ?, updated_at = ? WHERE id = ?
   `).run(newVersion, ts, JSON.stringify(data), ts, req.params.id)
@@ -255,6 +266,25 @@ app.post('/api/plans/:id/republish', (req, res) => {
   }).catch(err => console.error('[mailer] resubmit email failed:', err.message))
 
   res.json({ ok: true, newVersion })
+})
+
+// ── Admin override: clear all reviewer signatures (unstick a stuck plan) ──────
+app.post('/api/plans/:id/clear-signatures', (req, res) => {
+  const row = db.prepare('SELECT * FROM plans WHERE id = ?').get(req.params.id) as any
+  if (!row) return res.status(404).json({ error: 'Plan not found' })
+  const data = JSON.parse(row.data)
+  const reviewSlots = ['reviewedBy', 'approvedBy1', 'approvedBy2', 'approvedBy3'] as const
+  for (const slot of reviewSlots) {
+    if (data.approvals?.[slot]) {
+      data.approvals[slot].signatureImage = undefined
+      data.approvals[slot].approvedAt = undefined
+      data.approvals[slot].sentForRevision = undefined
+      data.approvals[slot].revisionReason = undefined
+    }
+  }
+  const ts = now()
+  db.prepare('UPDATE plans SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(data), ts, req.params.id)
+  res.json({ ok: true })
 })
 
 // ── Manual version up ─────────────────────────────────────────────────────────

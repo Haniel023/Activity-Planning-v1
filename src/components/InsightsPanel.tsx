@@ -215,7 +215,6 @@ export default function InsightsPanel({ insight, planStatus, onClose }: Props) {
 
         {/* ── Too early state ────────────────────────────────────────────────── */}
         {insight.label === 'too_early' && (() => {
-          const hasAnyActual = insight.activityInsights.some(a => a.pastActualDays > 0 || a.totalPlanDays > 0)
           const hasFuturePlans = insight.totalAllPlanDays > 0
           return (
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-center space-y-1.5">

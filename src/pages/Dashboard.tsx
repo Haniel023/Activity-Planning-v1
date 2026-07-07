@@ -6,8 +6,17 @@ import type { PlanType, ActivityRequest, GroupType, CompanyHoliday } from '../ty
 import ConfirmModal from '../components/ConfirmModal'
 import HolidayManager from '../components/HolidayManager'
 import ApproverMaintenance from '../components/ApproverMaintenance'
+import TourGuide from '../components/TourGuide'
+import dashboardSteps from '../tours/dashboardSteps'
 
 type DashView = 'plans' | 'analytics' | 'requests' | 'settings'
+
+const TAB_IDS: Record<DashView, string> = {
+  plans:     'tour-tab-plans',
+  analytics: 'tour-tab-analytics',
+  requests:  'tour-tab-requests',
+  settings:  'tour-tab-settings',
+}
 
 const STATUS_CHIP: Record<string, string> = {
   draft:            'bg-gray-100 text-gray-600',
@@ -109,7 +118,7 @@ export default function Dashboard() {
   const [showNewModal, setShowNewModal] = useState(false)
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
-  const [filterType, setFilterType] = useState<'all' | 'development' | 'support'>('all')
+  const [filterType, setFilterType] = useState<'all' | 'development' | 'support' | 'training'>('all')
   const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'ongoing_approval' | 'published' | 'for_revision' | 'cancelled' | 'rejected'>('all')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 15
@@ -293,6 +302,9 @@ export default function Dashboard() {
   const [analyticsGroupFilter, setAnalyticsGroupFilter] = useState<string | null>(null)
   const [analyticsStatusFilter, setAnalyticsStatusFilter] = useState<string | null>(null)
 
+  // ── Tour ─────────────────────────────────────────────────────────────────────
+  const [tourKey, setTourKey] = useState(0)
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
@@ -434,6 +446,11 @@ export default function Dashboard() {
           {/* Action buttons */}
           <div className="flex items-center gap-2 shrink-0">
             <button
+              onClick={() => { localStorage.removeItem('ap_tour_dashboard_v1'); setTourKey(k => k + 1) }}
+              title="Open app tour guide"
+              className="w-8 h-8 rounded-full border border-gray-200 bg-white text-gray-500 hover:border-blue-400 hover:text-blue-600 text-sm font-bold transition-colors flex items-center justify-center shrink-0"
+            >?</button>
+            <button
               onClick={() => setShowHolidayManager(true)}
               className="bg-white border border-gray-200 hover:border-orange-300 hover:bg-orange-50 text-gray-600 hover:text-orange-600 text-sm font-medium px-3 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
               title="Manage company holidays"
@@ -448,6 +465,7 @@ export default function Dashboard() {
             </button>
             {view === 'plans' && (
               <button
+                id="tour-new-plan"
                 onClick={() => setShowNewModal(true)}
                 className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
               >
@@ -478,6 +496,7 @@ export default function Dashboard() {
             {(['plans', 'analytics', 'requests', 'settings'] as DashView[]).map(v => (
               <button
                 key={v}
+                id={TAB_IDS[v]}
                 onClick={() => setView(v)}
                 className={`px-3 py-1.5 font-medium transition-colors capitalize ${view === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
               >
@@ -490,12 +509,14 @@ export default function Dashboard() {
           {view === 'plans' && (
             <>
               <span className="text-gray-200 text-sm">|</span>
-              {(['all', 'development', 'support'] as const).map(t => (
+              <div id="tour-plan-filters" className="flex items-center gap-1.5 flex-wrap">
+              {(['all', 'development', 'support', 'training'] as const).map(t => (
                 <button key={t} onClick={() => setFilter(setFilterType)(t)}
                   className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${filterType === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
-                  {t === 'all' ? 'All Types' : t === 'development' ? 'Development' : 'Support'}
+                  {t === 'all' ? 'All Types' : t === 'development' ? 'Development' : t === 'support' ? 'Support' : 'Training'}
                 </button>
               ))}
+              </div>
               <span className="text-gray-200 text-sm">|</span>
               <select
                 value={filterStatus}
@@ -581,12 +602,14 @@ export default function Dashboard() {
                     </svg>
                   </button>
                 </div>
-                {pagedPlans.map(plan => (
-                  <div key={plan.id} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                {pagedPlans.map((plan, idx) => (
+                  <div key={plan.id} id={idx === 0 ? 'tour-first-plan' : undefined} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                     <div className="p-4 flex items-start gap-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${plan.type === 'development' ? 'bg-blue-50' : 'bg-green-50'}`}>
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${plan.type === 'development' ? 'bg-blue-50' : plan.type === 'training' ? 'bg-purple-50' : 'bg-green-50'}`}>
                         {plan.type === 'development' ? (
                           <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                        ) : plan.type === 'training' ? (
+                          <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /></svg>
                         ) : (
                           <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                         )}
@@ -908,6 +931,8 @@ export default function Dashboard() {
         {view === 'settings' && <ApproverMaintenance />}
 
       </main>
+
+      <TourGuide key={tourKey} steps={dashboardSteps} storageKey="ap_tour_dashboard_v1" />
     </div>
   )
 }
@@ -943,7 +968,7 @@ function PlanTypeModal({ title, subtitle, onSelect, onClose, creating }: {
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <button onClick={() => onSelect('development')} disabled={creating}
             className="bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-md hover:border-blue-400 transition-all group disabled:opacity-60 disabled:cursor-not-allowed">
             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-3 group-hover:bg-blue-200 transition-colors">
@@ -959,6 +984,14 @@ function PlanTypeModal({ title, subtitle, onSelect, onClose, creating }: {
             </div>
             <h3 className="text-sm font-semibold text-gray-800 mb-1">Support Plan</h3>
             <p className="text-xs text-gray-400 leading-relaxed">Preparation · Investigation · Fixing · Documentation · Cascading</p>
+          </button>
+          <button onClick={() => onSelect('training')} disabled={creating}
+            className="bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-md hover:border-purple-400 transition-all group disabled:opacity-60 disabled:cursor-not-allowed">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center mb-3 group-hover:bg-purple-200 transition-colors">
+              <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /></svg>
+            </div>
+            <h3 className="text-sm font-semibold text-gray-800 mb-1">Training Plan</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">Preparation · Sessions · Assessment</p>
           </button>
         </div>
         {creating && (

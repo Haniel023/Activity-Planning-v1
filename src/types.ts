@@ -1,4 +1,4 @@
-export type PlanType = 'development' | 'support'
+export type PlanType = 'development' | 'support' | 'training'
 export type GroupType = 'SMART' | 'DEV' | 'NETWORK'
 
 export const PERSON_ROLES = [
@@ -149,6 +149,7 @@ export interface ActivityPlan {
   activities: ActivityRow[]
   months: MonthConfig[]
   otDays: string[]
+  startDate?: string         // YYYY-MM-DD — overrides months[0] for status calculation
   targetDate?: string        // YYYY-MM-DD
   status: PlanDocStatus
   requiresDeptManager?: boolean   // enables optional approvedBy3 (DEPARTMENT MANAGER) slot

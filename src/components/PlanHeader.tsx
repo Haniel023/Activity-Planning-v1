@@ -45,6 +45,7 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function PlanHeader({ plan, onChange, readOnly }: Props) {
   const isDev = plan.type === 'development'
+  const isTraining = plan.type === 'training'
   const stakeholders: Stakeholder[] = plan.stakeholders ?? []
 
   function setField(field: string, value: string) {
@@ -116,7 +117,7 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
     <div className="space-y-3">
       {/* Title */}
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-gray-500">{isDev ? 'Project Title' : 'Support Title'}</label>
+        <label className="block text-xs font-medium text-gray-500">{isDev ? 'Project Title' : isTraining ? 'Training Title' : 'Support Title'}</label>
         <input
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500"
           value={plan.title}
@@ -147,8 +148,8 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
-          <div className={`text-xs font-semibold px-2 py-2 rounded-lg text-center ${isDev ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700'}`}>
-            {isDev ? 'Development' : 'Support'}
+          <div className={`text-xs font-semibold px-2 py-2 rounded-lg text-center ${isDev ? 'bg-blue-50 text-blue-700' : isTraining ? 'bg-purple-50 text-purple-700' : 'bg-green-50 text-green-700'}`}>
+            {isDev ? 'Development' : isTraining ? 'Training' : 'Support'}
           </div>
         </div>
       </div>
@@ -178,16 +179,28 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
         )}
       </div>
 
-      {/* Target Date */}
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Target Date</label>
-        <input
-          type="date"
-          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500"
-          value={plan.targetDate ?? ''}
-          disabled={readOnly}
-          onChange={e => setField('targetDate', e.target.value)}
-        />
+      {/* Start Date + Target Date */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Start Date</label>
+          <input
+            type="date"
+            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500"
+            value={plan.startDate ?? ''}
+            disabled={readOnly}
+            onChange={e => setField('startDate', e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Target Date</label>
+          <input
+            type="date"
+            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500"
+            value={plan.targetDate ?? ''}
+            disabled={readOnly}
+            onChange={e => setField('targetDate', e.target.value)}
+          />
+        </div>
       </div>
 
       {/* Status indicator */}
@@ -214,7 +227,7 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
             </div>
             <div className="flex justify-between text-[10px] text-gray-400">
               <span>Expected: {status.expectedProgress.toFixed(0)}%</span>
-              <span>Target: {plan.targetDate}</span>
+              <span>{plan.startDate ? `${plan.startDate} → ${plan.targetDate}` : `Target: ${plan.targetDate}`}</span>
             </div>
           </div>
         </div>

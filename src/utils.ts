@@ -121,9 +121,9 @@ export function bumpMajorVersion(version: string): string {
 // ── Person roles for PIC datalist ────────────────────────────────────────────
 
 export function getPersonRoles(type: PlanType): string[] {
-  return type === 'development'
-    ? ['Requestor', 'Designer', 'Developer', 'SE', 'PM', 'Manager']
-    : ['Requestor', 'SMART Member', 'SE', 'PM', 'Manager']
+  if (type === 'development') return ['Requestor', 'Designer', 'Developer', 'SE', 'PM', 'Manager']
+  if (type === 'training') return ['Requestor', 'Trainer', 'SE', 'PM', 'Manager']
+  return ['Requestor', 'SMART Member', 'SE', 'PM', 'Manager']
 }
 
 // Migrate old persons object → personsList array
@@ -275,6 +275,16 @@ export function createDefaultPlan(type: PlanType): ActivityPlan {
     makeRow('5.1', 'Cascading', false, months),
   ]
 
+  const trainingActivities: ActivityRow[] = [
+    makeRow('1.0', 'Preparation', true, months),
+    makeRow('1.1', 'Material Preparation', false, months),
+    makeRow('1.2', 'Venue / Setup', false, months),
+    makeRow('2.0', 'Sessions', true, months),
+    makeRow('2.1', 'Session 1', false, months),
+    makeRow('3.0', 'Assessment', true, months),
+    makeRow('3.1', 'Evaluation', false, months),
+  ]
+
   const devPersons: DevPersons = { requestor: '', designer: '', developer: '', se: '', pm: '' }
   const supportPersons: SupportPersons = { requestor: '', smartMember: '', se: '', pm: '' }
 
@@ -294,7 +304,7 @@ export function createDefaultPlan(type: PlanType): ActivityPlan {
       approvedBy1: { name: '', role: 'SUPERVISOR',       remarks: '' },
       approvedBy2: { name: '', role: 'SECTION MANAGER',  remarks: '' },
     },
-    activities: type === 'development' ? devActivities : supportActivities,
+    activities: type === 'development' ? devActivities : type === 'training' ? trainingActivities : supportActivities,
     months,
     otDays: [],
     status: 'draft',
@@ -343,9 +353,12 @@ export function calcPlanStatus(plan: ActivityPlan): PlanStatus {
 
   const todayMs = Date.now()
   const targetMs = new Date(plan.targetDate).getTime()
-  const startMs = plan.months.length > 0
-    ? new Date(plan.months[0].year, plan.months[0].month, 1).getTime()
-    : todayMs
+  const startMs = plan.startDate
+    ? new Date(plan.startDate + 'T00:00:00').getTime()
+    : plan.months.length > 0
+      ? new Date(plan.months[0].year, plan.months[0].month, 1).getTime()
+      : todayMs
+  if (todayMs < startMs) return { label: 'NOT STARTED', progress, daysLeft: null, expectedProgress: 0 }
   const totalMs = targetMs - startMs
   const elapsedMs = todayMs - startMs
   const expectedProgress = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0

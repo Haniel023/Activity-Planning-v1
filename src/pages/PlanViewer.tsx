@@ -2,10 +2,13 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { ActivityPlan, ApproverSlot, SelfCheckTR } from '../types'
 import { autoFillNameForRole, createDefaultSelfCheck } from '../utils'
+import { diffPlans, type DiffSection } from '../planDiff'
 import { api } from '../api'
 import ActivityTable from '../components/ActivityTable'
 import PlanHeader from '../components/PlanHeader'
 import SelfCheckTRView from '../components/SelfCheckTRView'
+import TourGuide from '../components/TourGuide'
+import planViewerSteps from '../tours/planViewerSteps'
 
 type ViewerRole = 'PIC' | 'PROJECT LEADER' | 'SUPERVISOR' | 'SECTION MANAGER' | 'DEPARTMENT MANAGER' | 'MANAGER'
 type SlotKey = 'preparedBy' | 'reviewedBy' | 'approvedBy1' | 'approvedBy2' | 'approvedBy3'
@@ -59,6 +62,14 @@ export default function PlanViewer() {
   // Tracks which slots have been confirmed saved to the server — prevents premature locking from local signature upload
   const [approverActed, setApproverActed] = useState<Set<SlotKey>>(new Set())
 
+  // ── Version diff modal ───────────────────────────────────────────────────────
+  const [diffModal, setDiffModal] = useState<{ version: string; sections: DiffSection[] } | null>(null)
+  const [diffLoading, setDiffLoading] = useState(false)
+
+  // ── Tour ─────────────────────────────────────────────────────────────────────
+  const [tourReady, setTourReady] = useState(false)
+  const [tourKey, setTourKey] = useState(0)
+
   useEffect(() => {
     if (!id) { navigate('/'); return }
     api.getPlan(id)
@@ -87,6 +98,33 @@ export default function PlanViewer() {
     document.title = `${plan.title || 'Untitled Plan'} — View — Activity Planning`
     return () => { document.title = 'Activity Planning' }
   }, [plan?.title])
+
+  // Start tour after role modal closes
+  useEffect(() => {
+    if (!loading && !showRoleModal) setTourReady(true)
+  }, [loading, showRoleModal])
+
+  async function openDiff(targetVersion: string) {
+    if (!plan) return
+    setDiffLoading(true)
+    try {
+      const snapshots = await api.listVersionSnapshots(plan.id)
+      const idx = snapshots.findIndex(s => s.version === targetVersion)
+      const [newer, older] = await Promise.all([
+        api.getVersionSnapshot(plan.id, targetVersion),
+        idx > 0 ? api.getVersionSnapshot(plan.id, snapshots[idx - 1].version) : Promise.resolve(null),
+      ])
+      if (!older) {
+        setDiffModal({ version: targetVersion, sections: [{ label: 'Initial version — no previous snapshot to compare', changes: [] }] })
+      } else {
+        setDiffModal({ version: targetVersion, sections: diffPlans(older.data, newer.data) })
+      }
+    } catch {
+      alert('Could not load version snapshots.')
+    } finally {
+      setDiffLoading(false)
+    }
+  }
 
   function selectRole(r: ViewerRole) {
     setRole(r)
@@ -232,6 +270,41 @@ export default function PlanViewer() {
         </div>
       )}
 
+      {/* Version diff modal */}
+      {diffModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget) setDiffModal(null) }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h2 className="text-sm font-bold text-gray-800">Changes in v{diffModal.version}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Compared to the previous version snapshot</p>
+              </div>
+              <button onClick={() => setDiffModal(null)} className="text-gray-300 hover:text-gray-500 p-1">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {diffModal.sections.map((sec, i) => (
+                <div key={i}>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{sec.label}</p>
+                  {sec.changes.length === 0
+                    ? <p className="text-xs text-gray-400 italic">—</p>
+                    : <ul className="space-y-1">
+                        {sec.changes.map((c, j) => (
+                          <li key={j} className="text-xs text-gray-700 flex items-start gap-2">
+                            <span className="text-blue-400 shrink-0 mt-0.5">·</span>
+                            <span>{c}</span>
+                          </li>
+                        ))}
+                      </ul>
+                  }
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* For Revision modal */}
       {showRevisionModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -287,7 +360,7 @@ export default function PlanViewer() {
           </span>
 
           {/* Tab switcher */}
-          <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs">
+          <div id="tour-viewer-tabs" className="flex border border-gray-200 rounded-lg overflow-hidden text-xs">
             <button
               className={`px-3 py-1.5 transition-colors ${tab === 'plan' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
               onClick={() => setTab('plan')}
@@ -329,6 +402,11 @@ export default function PlanViewer() {
               <button onClick={() => setShowRoleModal(true)} className="text-[10px] text-gray-400 hover:text-gray-600 underline">change</button>
             </div>
           )}
+          <button
+            onClick={() => { localStorage.removeItem('ap_tour_viewer_v1'); setTourKey(k => k + 1) }}
+            title="Open tour guide"
+            className="w-7 h-7 rounded-full border border-gray-200 bg-white text-gray-500 hover:border-blue-400 hover:text-blue-600 text-sm font-bold transition-colors flex items-center justify-center shrink-0"
+          >?</button>
         </div>
       </header>
 
@@ -337,7 +415,7 @@ export default function PlanViewer() {
         {tab === 'plan' && (
           <>
             {/* Approval sidebar */}
-            <aside className="w-80 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+            <aside id="tour-approval-sidebar" className="w-80 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
               <div className="border-b border-gray-200 px-3 py-2 flex-shrink-0">
                 <p className="text-xs font-semibold text-gray-600">Approval</p>
               </div>
@@ -447,13 +525,14 @@ export default function PlanViewer() {
                         <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
                           onChange={e => { const f = e.target.files?.[0]; if (f) handleSignatureFile(f) }} />
                         {slot.signatureImage ? (
-                          <div className="relative border border-green-300 rounded-lg p-2 bg-white flex flex-col items-center">
+                          <div id="tour-signature-area" className="relative border border-green-300 rounded-lg p-2 bg-white flex flex-col items-center">
                             <img src={slot.signatureImage} alt="Signature" className="max-h-20 w-full object-contain" />
                             <button onClick={() => updateSlot(key, { signatureImage: undefined, approvedAt: undefined })}
                               className="absolute top-1 right-1 text-gray-300 hover:text-red-400 text-xs">✕</button>
                           </div>
                         ) : (
                           <div
+                            id="tour-signature-area"
                             onDragOver={e => { e.preventDefault(); setDraggingOver(true) }}
                             onDragLeave={() => setDraggingOver(false)}
                             onDrop={handleDrop}
@@ -467,7 +546,7 @@ export default function PlanViewer() {
                       </div>
 
                       {/* Save approval */}
-                      <button onClick={handleSaveApproval} disabled={saving}
+                      <button id="tour-approve-btn" onClick={handleSaveApproval} disabled={saving}
                         className={`w-full text-xs font-medium py-2 rounded-lg transition-colors ${saved ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-blue-600 hover:bg-blue-700 text-white'} disabled:opacity-50`}>
                         {saving ? 'Saving...' : saved ? '✓ Approval Saved' : 'Save Approval'}
                       </button>
@@ -487,12 +566,25 @@ export default function PlanViewer() {
                 {plan.versionHistory.length > 0 && (
                   <div className="border border-gray-200 rounded-lg p-2.5">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Version History</p>
-                    <div className="space-y-1.5">
-                      {plan.versionHistory.map((v, i) => (
-                        <div key={i} className="text-[10px] text-gray-500">
-                          <span className="font-semibold text-gray-700">v{v.version}</span> — {v.date}
-                          {v.reason !== 'N/A' && <span className="text-gray-400"> · {v.reason}</span>}
-                          {v.by && <span className="text-gray-400"> · {v.by}</span>}
+                    <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                      {[...plan.versionHistory].reverse().map((v, i) => (
+                        <div key={i} className="border-b border-gray-100 pb-1.5 last:border-0 last:pb-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <div>
+                              <span className="text-[10px] font-semibold text-gray-700">v{v.version}</span>
+                              <span className="text-[10px] text-gray-400 ml-1">{v.date}</span>
+                            </div>
+                            <button
+                              onClick={() => openDiff(v.version)}
+                              disabled={diffLoading}
+                              title="View changes in this version"
+                              className="text-[9px] text-blue-500 hover:text-blue-700 border border-blue-200 hover:border-blue-400 px-1.5 py-0.5 rounded transition-colors disabled:opacity-40 shrink-0"
+                            >
+                              {diffLoading ? '…' : 'Changes'}
+                            </button>
+                          </div>
+                          {v.reason && v.reason !== 'N/A' && <p className="text-[10px] text-gray-500 mt-0.5">{v.reason}</p>}
+                          {v.by && <p className="text-[10px] text-gray-400">by {v.by}</p>}
                         </div>
                       ))}
                     </div>
@@ -512,7 +604,7 @@ export default function PlanViewer() {
             </aside>
 
             {/* Activity table — partial edit for PIC when all approved */}
-            <main className="flex-1 flex flex-col overflow-hidden p-3">
+            <main id="tour-activity-table" className="flex-1 flex flex-col overflow-hidden p-3">
               <ActivityTable
                 plan={plan}
                 onChange={picPartialEdit ? (next) => setPlan(next) : () => {}}
@@ -529,6 +621,10 @@ export default function PlanViewer() {
           </main>
         )}
       </div>
+
+      {tourReady && (
+        <TourGuide key={tourKey} steps={planViewerSteps} storageKey="ap_tour_viewer_v1" />
+      )}
     </div>
   )
 }

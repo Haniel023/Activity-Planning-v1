@@ -33,7 +33,7 @@ export const api = {
   async listPlans(): Promise<PlanSummary[]> {
     const rows = await req(`${BASE}/plans`)
     return rows.map((row: any) => {
-      const fakePlan = { activities: row.activities || [], months: row.months || [], targetDate: row.targetDate } as ActivityPlan
+      const fakePlan = { activities: row.activities || [], months: row.months || [], startDate: row.startDate, targetDate: row.targetDate } as ActivityPlan
       const ps = calcPlanStatus(fakePlan)
       return {
         id: row.id,
@@ -96,6 +96,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason, by }),
     })
+  },
+
+  async clearSignatures(id: string): Promise<void> {
+    await req(`${BASE}/plans/${id}/clear-signatures`, { method: 'POST' })
   },
 
   async republish(id: string, by: string): Promise<{ newVersion: string }> {
