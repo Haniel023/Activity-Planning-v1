@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type PlanSummary } from '../api'
-import { createDefaultPlan, createDefaultSelfCheck } from '../utils'
+import { createDefaultPlan } from '../utils'
 import type { PlanType, ActivityRequest, GroupType, CompanyHoliday } from '../types'
 import ConfirmModal from '../components/ConfirmModal'
 import HolidayManager from '../components/HolidayManager'
@@ -118,7 +118,7 @@ export default function Dashboard() {
   const [showNewModal, setShowNewModal] = useState(false)
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
-  const [filterType, setFilterType] = useState<'all' | 'development' | 'support' | 'training'>('all')
+  const [filterType, setFilterType] = useState<'all' | 'development' | 'support' | 'training' | 'implementation'>('all')
   const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'ongoing_approval' | 'published' | 'for_revision' | 'cancelled' | 'rejected'>('all')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 15
@@ -194,9 +194,7 @@ export default function Dashboard() {
         // Fill Prepared By (approval)
         plan.approvals.preparedBy.name = prefillPic
       }
-      const selfCheck = createDefaultSelfCheck()
-      if (prefillPic) selfCheck.selfCheckPIC = prefillPic
-      const { id } = await api.createPlan(plan, selfCheck)
+      const { id } = await api.createPlan(plan)
       if (fromRequestId) {
         await api.updateRequest(fromRequestId, { status: 'in_progress' })
         setRequests(prev => prev.map(r => r.id === fromRequestId ? { ...r, status: 'in_progress' } : r))
@@ -510,10 +508,10 @@ export default function Dashboard() {
             <>
               <span className="text-gray-200 text-sm">|</span>
               <div id="tour-plan-filters" className="flex items-center gap-1.5 flex-wrap">
-              {(['all', 'development', 'support', 'training'] as const).map(t => (
+              {(['all', 'development', 'support', 'training', 'implementation'] as const).map(t => (
                 <button key={t} onClick={() => setFilter(setFilterType)(t)}
                   className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${filterType === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
-                  {t === 'all' ? 'All Types' : t === 'development' ? 'Development' : t === 'support' ? 'Support' : 'Training'}
+                  {t === 'all' ? 'All Types' : t === 'development' ? 'Development' : t === 'support' ? 'Support' : t === 'training' ? 'Training' : 'Implementation'}
                 </button>
               ))}
               </div>
@@ -605,11 +603,13 @@ export default function Dashboard() {
                 {pagedPlans.map((plan, idx) => (
                   <div key={plan.id} id={idx === 0 ? 'tour-first-plan' : undefined} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                     <div className="p-4 flex items-start gap-4">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${plan.type === 'development' ? 'bg-blue-50' : plan.type === 'training' ? 'bg-purple-50' : 'bg-green-50'}`}>
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${plan.type === 'development' ? 'bg-blue-50' : plan.type === 'training' ? 'bg-purple-50' : plan.type === 'implementation' ? 'bg-amber-50' : 'bg-green-50'}`}>
                         {plan.type === 'development' ? (
                           <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
                         ) : plan.type === 'training' ? (
                           <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /></svg>
+                        ) : plan.type === 'implementation' ? (
+                          <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         ) : (
                           <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                         )}
@@ -633,7 +633,7 @@ export default function Dashboard() {
                           )}
                         </div>
                         <div className="flex items-center gap-4 mt-2 flex-wrap">
-                          <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full ${PROJECT_CHIP[plan.projectStatus] || 'bg-gray-100 text-gray-500'}`}>
+                          <span title={plan.projectReason} className={`text-[11px] font-medium px-1.5 py-0.5 rounded-full cursor-help ${PROJECT_CHIP[plan.projectStatus] || 'bg-gray-100 text-gray-500'}`}>
                             {plan.projectStatus}
                           </span>
                           <div className="flex items-center gap-1.5">
@@ -812,7 +812,7 @@ export default function Dashboard() {
                               </div>
                             </td>
                             <td className="px-4 py-2">
-                              <span className={`px-1.5 py-0.5 rounded-full font-medium ${PROJECT_CHIP[p.projectStatus] || 'bg-gray-100 text-gray-500'}`}>{p.projectStatus}</span>
+                              <span title={p.projectReason} className={`px-1.5 py-0.5 rounded-full font-medium cursor-help ${PROJECT_CHIP[p.projectStatus] || 'bg-gray-100 text-gray-500'}`}>{p.projectStatus}</span>
                             </td>
                           </tr>
                         ))}
@@ -968,7 +968,7 @@ function PlanTypeModal({ title, subtitle, onSelect, onClose, creating }: {
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <button onClick={() => onSelect('development')} disabled={creating}
             className="bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-md hover:border-blue-400 transition-all group disabled:opacity-60 disabled:cursor-not-allowed">
             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mb-3 group-hover:bg-blue-200 transition-colors">
@@ -992,6 +992,14 @@ function PlanTypeModal({ title, subtitle, onSelect, onClose, creating }: {
             </div>
             <h3 className="text-sm font-semibold text-gray-800 mb-1">Training Plan</h3>
             <p className="text-xs text-gray-400 leading-relaxed">Preparation · Sessions · Assessment</p>
+          </button>
+          <button onClick={() => onSelect('implementation')} disabled={creating}
+            className="bg-white rounded-xl border border-gray-200 p-5 text-left hover:shadow-md hover:border-amber-400 transition-all group disabled:opacity-60 disabled:cursor-not-allowed">
+            <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mb-3 group-hover:bg-amber-200 transition-colors">
+              <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </div>
+            <h3 className="text-sm font-semibold text-gray-800 mb-1">Implementation Plan</h3>
+            <p className="text-xs text-gray-400 leading-relaxed">Kick-Off · Technical Meeting · Preparation · Change Day · Testing · Judgement · Closing</p>
           </button>
         </div>
         {creating && (

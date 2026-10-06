@@ -1,4 +1,4 @@
-export type PlanType = 'development' | 'support' | 'training'
+export type PlanType = 'development' | 'support' | 'training' | 'implementation'
 export type GroupType = 'SMART' | 'DEV' | 'NETWORK'
 
 export const PERSON_ROLES = [
@@ -7,6 +7,12 @@ export const PERSON_ROLES = [
   'Designer', 'Developer', 'Technical Reviewer',
   'DBA/Release Support PIC', 'Gatepass PIC',
   'Requestor', 'Customer',
+] as const
+
+// Stakeholder roles offered for training-type plans (distinct from dev/support roles)
+export const TRAINING_PERSON_ROLES = [
+  'Trainer', 'Co-Trainer', 'Training Coordinator', 'Reviewer',
+  'Venue PIC', 'Requestor', 'Project Manager', 'Customer',
 ] as const
 
 export type PersonRole = typeof PERSON_ROLES[number]
@@ -155,38 +161,6 @@ export interface ActivityPlan {
   requiresDeptManager?: boolean   // enables optional approvedBy3 (DEPARTMENT MANAGER) slot
   versionHistory: VersionEntry[]
   publishedAt?: string
-}
-
-// Self Check TR
-export interface SelfCheckItem {
-  no: number
-  checkpoint: string
-  expectedResult: string
-  selfCheck1: string
-  selfCheck2: string
-  tr1: string
-  tr2: string
-  remarks: string
-}
-
-export const SELF_CHECK_DEFAULTS: SelfCheckItem[] = [
-  { no: 1, checkpoint: 'Basic Requirement', expectedResult: 'Title should have input', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 2, checkpoint: 'Core Team Input', expectedResult: 'Roles / PIC should have input', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 3, checkpoint: 'Activity Details', expectedResult: 'Activities with input and should be detailed', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 4, checkpoint: 'Activity PIC', expectedResult: 'PIC per Activity should be indicated', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 5, checkpoint: 'Activity Schedule', expectedResult: 'With exact date input & plotted', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 6, checkpoint: 'Legend/s', expectedResult: 'Legend should be correct', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 7, checkpoint: 'Template Version', expectedResult: 'Latest version', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 8, checkpoint: 'Date Format', expectedResult: 'YYYY-MM-DD', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 9, checkpoint: 'Signatures', expectedResult: 'Should be complete / at least with PIC Signature', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-  { no: 10, checkpoint: 'NG Result', expectedResult: 'Should be logged/updated in Quality Log', selfCheck1: '', selfCheck2: '', tr1: '', tr2: '', remarks: '' },
-]
-
-export interface SelfCheckTR {
-  selfCheckPIC: string
-  trPIC: string
-  items: SelfCheckItem[]
-  versionHistory: { version: string; reason: string; date: string; updatedBy: string }[]
 }
 
 export interface ProgressUpdate {

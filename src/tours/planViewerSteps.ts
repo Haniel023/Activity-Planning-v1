@@ -21,13 +21,6 @@ const planViewerSteps: TourStep[] = [
     position: 'left',
   },
   {
-    target: '#tour-viewer-tabs',
-    title: 'Quality Checklist',
-    content:
-      'Click the "Self Check / TR" tab to review the quality checklist. All 10 checkpoints should be filled before a plan is submitted for approval.',
-    position: 'bottom',
-  },
-  {
     target: '#tour-signature-area',
     title: 'Upload Your Signature',
     content:

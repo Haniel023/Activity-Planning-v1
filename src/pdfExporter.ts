@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { ActivityPlan, SelfCheckTR } from './types'
+import type { ActivityPlan } from './types'
 import { calcAutoProgress } from './utils'
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ function finalY(doc: jsPDF, fallback: number): number {
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export async function exportToPDF(plan: ActivityPlan, selfCheck: SelfCheckTR) {
+export async function exportToPDF(plan: ActivityPlan) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
 
   // ─── Page 1: Plan ──────────────────────────────────────────────────────────
@@ -186,16 +186,15 @@ export async function exportToPDF(plan: ActivityPlan, selfCheck: SelfCheckTR) {
       ]
     }
     const pic0 = act.picEntries?.[0]
-    const raci = pic0?.raci
     const prog = act.autoProgress !== false ? calcAutoProgress(act) : act.progress
     return [
       act.number,
       act.name,
       pic0?.pic || '—',
-      { content: raci?.r ? '●' : '', styles: { halign: 'center' as const } },
-      { content: raci?.a ? '●' : '', styles: { halign: 'center' as const } },
-      { content: raci?.c ? '●' : '', styles: { halign: 'center' as const } },
-      { content: raci?.i ? '●' : '', styles: { halign: 'center' as const } },
+      { content: '', styles: { halign: 'center' as const } },
+      { content: '', styles: { halign: 'center' as const } },
+      { content: '', styles: { halign: 'center' as const } },
+      { content: '', styles: { halign: 'center' as const } },
       act.status,
       { content: `${prog}%`, styles: { halign: 'center' as const } },
       { content: String(act.mh || ''), styles: { halign: 'center' as const } },
@@ -253,6 +252,20 @@ export async function exportToPDF(plan: ActivityPlan, selfCheck: SelfCheckTR) {
           doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F')
         }
       }
+    },
+    didDrawCell: (data) => {
+      if (data.section !== 'body') return
+      if (phaseRows.has(data.row.index)) return
+      const RACI_COLS: Record<number, 'r' | 'a' | 'c' | 'i'> = { 3: 'r', 4: 'a', 5: 'c', 6: 'i' }
+      const key = RACI_COLS[data.column.index]
+      if (!key) return
+      const act = plan.activities[data.row.index]
+      const raci = act?.picEntries?.[0]?.raci
+      if (!raci?.[key]) return
+      const cx = data.cell.x + data.cell.width / 2
+      const cy = data.cell.y + data.cell.height / 2
+      fill(doc, BLUE)
+      doc.circle(cx, cy, 1, 'F')
     },
     didDrawPage: () => { pageHeader(doc, plan); pageFooter(doc) },
   })
@@ -326,105 +339,12 @@ export async function exportToPDF(plan: ActivityPlan, selfCheck: SelfCheckTR) {
     }
   })
 
-  // ─── Page 2: Self Check / TR ───────────────────────────────────────────────
-  doc.addPage()
-  pageHeader(doc, plan)
-  pageFooter(doc)
-  y = HDR_H + 4
-
-  y = sectionLabel(doc, 'Self Check / Technical Review (TR)', y) + 2
-
-  // PIC row
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); txt(doc, TEXT_GRAY)
-  doc.text('Self Check PIC:', ML, y + 3)
-  doc.setFont('helvetica', 'normal'); txt(doc, TEXT_DARK)
-  doc.text(selfCheck.selfCheckPIC || '—', ML + 28, y + 3)
-  doc.setFont('helvetica', 'bold'); txt(doc, TEXT_GRAY)
-  doc.text('TR PIC:', ML + 90, y + 3)
-  doc.setFont('helvetica', 'normal'); txt(doc, TEXT_DARK)
-  doc.text(selfCheck.trPIC || '—', ML + 103, y + 3)
-  y += 7
-
-  // Checkpoint table
-  autoTable(doc, {
-    startY: y,
-    margin: { left: ML, right: MR },
-    head: [[
-      { content: 'No.', styles: { halign: 'center' } },
-      'Checkpoint',
-      'Expected Result',
-      { content: 'SC 1st', styles: { halign: 'center' } },
-      { content: 'SC 2nd', styles: { halign: 'center' } },
-      { content: 'TR 1st', styles: { halign: 'center' } },
-      { content: 'TR 2nd', styles: { halign: 'center' } },
-      'Remarks',
-    ]],
-    body: selfCheck.items.map(item => {
-      const resultStyle = (v: string) => ({
-        halign: 'center' as const,
-        textColor: v === 'NG' ? ([220, 38, 38] as RGB) : v === 'OK' ? ([22, 163, 74] as RGB) : TEXT_DARK,
-        fontStyle: v === 'NG' || v === 'OK' ? ('bold' as const) : ('normal' as const),
-      })
-      return [
-        { content: item.no, styles: { halign: 'center' as const } },
-        item.checkpoint,
-        item.expectedResult,
-        { content: item.selfCheck1, styles: resultStyle(item.selfCheck1) },
-        { content: item.selfCheck2, styles: resultStyle(item.selfCheck2) },
-        { content: item.tr1, styles: resultStyle(item.tr1) },
-        { content: item.tr2, styles: resultStyle(item.tr2) },
-        item.remarks,
-      ]
-    }),
-    styles: {
-      fontSize: 7.5,
-      cellPadding: { top: 1.8, bottom: 1.8, left: 2, right: 2 },
-      lineColor: BORDER,
-      lineWidth: 0.2,
-      textColor: TEXT_DARK,
-    },
-    headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
-    alternateRowStyles: { fillColor: ALT_ROW },
-    columnStyles: {
-      0: { cellWidth: 10 },
-      1: { cellWidth: 40 },
-      2: { cellWidth: 63 },
-      3: { cellWidth: 20 },
-      4: { cellWidth: 20 },
-      5: { cellWidth: 20 },
-      6: { cellWidth: 20 },
-      7: { cellWidth: 80 },
-    },
-    didDrawPage: () => { pageHeader(doc, plan); pageFooter(doc) },
-  })
-
-  y = finalY(doc, y + 40) + 5
-
-  // Self Check version history ────────────────────────────────────────────────
-  if (selfCheck.versionHistory.length > 0) {
-    if (y + 20 > PH - 8) {
-      doc.addPage(); pageHeader(doc, plan); pageFooter(doc); y = HDR_H + 5
-    }
-    y = sectionLabel(doc, 'Self Check Version History', y) + 1
-    autoTable(doc, {
-      startY: y,
-      margin: { left: ML, right: MR },
-      head: [['Version', 'Reason for Revision', 'Date', 'Updated By']],
-      body: selfCheck.versionHistory.map(v => [v.version, v.reason, v.date, v.updatedBy]),
-      styles: { fontSize: 7.5, cellPadding: 2, lineColor: BORDER, lineWidth: 0.2, textColor: TEXT_DARK },
-      headStyles: { fillColor: NAVY, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
-      columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 120 }, 2: { cellWidth: 30 }, 3: { cellWidth: 60 } },
-      alternateRowStyles: { fillColor: ALT_ROW },
-      didDrawPage: () => { pageHeader(doc, plan); pageFooter(doc) },
-    })
-    y = finalY(doc, y + 20) + 5
-  }
-
   // Plan version history ───────────────────────────────────────────────────────
   if (plan.versionHistory.length > 0) {
-    if (y + 20 > PH - 8) {
-      doc.addPage(); pageHeader(doc, plan); pageFooter(doc); y = HDR_H + 5
-    }
+    doc.addPage()
+    pageHeader(doc, plan)
+    pageFooter(doc)
+    y = HDR_H + 4
     y = sectionLabel(doc, 'Plan Version History', y) + 1
     autoTable(doc, {
       startY: y,

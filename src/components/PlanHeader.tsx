@@ -1,12 +1,13 @@
 import { } from 'react'
 import type { ActivityPlan, MonthConfig, GroupType, Stakeholder } from '../types'
-import { PERSON_ROLES } from '../types'
+import { PERSON_ROLES, TRAINING_PERSON_ROLES } from '../types'
 import { monthLabel, syncDayMarks, generateDayMarks, calcPlanStatus, generateId } from '../utils'
 
 interface Props {
   plan: ActivityPlan
   onChange: (plan: ActivityPlan) => void
   readOnly?: boolean
+  onViewInsights?: () => void
 }
 
 const STATUS_STYLE = {
@@ -37,16 +38,24 @@ const ROLE_COLORS: Record<string, string> = {
   'Gatepass PIC':            'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
   'Requestor':               'bg-sky-50 text-sky-700 border-sky-200',
   'Customer':                'bg-green-50 text-green-700 border-green-200',
+  // training
+  'Trainer':                 'bg-orange-50 text-orange-700 border-orange-200',
+  'Co-Trainer':              'bg-amber-50 text-amber-700 border-amber-200',
+  'Training Coordinator':    'bg-teal-50 text-teal-700 border-teal-200',
+  'Reviewer':                'bg-slate-50 text-slate-700 border-slate-200',
+  'Venue PIC':               'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
   // legacy
   'Main Support':            'bg-emerald-50 text-emerald-700 border-emerald-200',
   'SE':                      'bg-purple-50 text-purple-700 border-purple-200',
   'PM':                      'bg-amber-50 text-amber-700 border-amber-200',
 }
 
-export default function PlanHeader({ plan, onChange, readOnly }: Props) {
+export default function PlanHeader({ plan, onChange, readOnly, onViewInsights }: Props) {
   const isDev = plan.type === 'development'
   const isTraining = plan.type === 'training'
+  const isImplementation = plan.type === 'implementation'
   const stakeholders: Stakeholder[] = plan.stakeholders ?? []
+  const roleOptions: readonly string[] = isTraining ? TRAINING_PERSON_ROLES : PERSON_ROLES
 
   function setField(field: string, value: string) {
     onChange({ ...plan, [field]: value })
@@ -117,13 +126,13 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
     <div className="space-y-3">
       {/* Title */}
       <div className="space-y-1">
-        <label className="block text-xs font-medium text-gray-500">{isDev ? 'Project Title' : isTraining ? 'Training Title' : 'Support Title'}</label>
+        <label className="block text-xs font-medium text-gray-500">{isDev ? 'Project Title' : isTraining ? 'Training Title' : isImplementation ? 'Implementation Title' : 'Support Title'}</label>
         <input
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:bg-gray-50 disabled:text-gray-500"
           value={plan.title}
           disabled={readOnly}
           onChange={e => setField('title', e.target.value)}
-          placeholder={isDev ? 'Enter project title' : 'Enter support title'}
+          placeholder={isDev ? 'Enter project title' : isImplementation ? 'Enter implementation title' : 'Enter support title'}
         />
       </div>
 
@@ -148,8 +157,8 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
-          <div className={`text-xs font-semibold px-2 py-2 rounded-lg text-center ${isDev ? 'bg-blue-50 text-blue-700' : isTraining ? 'bg-purple-50 text-purple-700' : 'bg-green-50 text-green-700'}`}>
-            {isDev ? 'Development' : isTraining ? 'Training' : 'Support'}
+          <div className={`text-xs font-semibold px-2 py-2 rounded-lg text-center ${isDev ? 'bg-blue-50 text-blue-700' : isTraining ? 'bg-purple-50 text-purple-700' : isImplementation ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'}`}>
+            {isDev ? 'Development' : isTraining ? 'Training' : isImplementation ? 'Implementation' : 'Support'}
           </div>
         </div>
       </div>
@@ -216,6 +225,16 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
                 : ''}
             </span>
           </div>
+          {(status.label === 'AT RISK' || status.label === 'DELAYED') && (
+            <div className="flex items-start justify-between gap-2">
+              <p className={`text-[11px] leading-snug ${status.label === 'DELAYED' ? 'text-red-700' : 'text-amber-700'}`}>{status.reason}</p>
+              {onViewInsights && (
+                <button type="button" onClick={onViewInsights} className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 underline shrink-0 whitespace-nowrap">
+                  View Insights
+                </button>
+              )}
+            </div>
+          )}
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] text-gray-500">
               <span>Actual progress</span>
@@ -238,7 +257,7 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
         <div className="flex items-center justify-between mb-2">
           <div>
             <p className="text-xs font-medium text-gray-500">Stakeholders</p>
-            <p className="text-[10px] text-gray-400">Roles shown in PIC dropdown</p>
+            <p className="text-[10px] text-gray-400">Names shown in PIC dropdown</p>
           </div>
           {!readOnly && (
             <button
@@ -294,7 +313,7 @@ export default function PlanHeader({ plan, onChange, readOnly }: Props) {
                     className="text-[10px] text-blue-500 border border-dashed border-blue-300 rounded-full px-1.5 py-0.5 bg-white focus:outline-none cursor-pointer hover:border-blue-400 transition-colors"
                   >
                     <option value="">+ Role</option>
-                    {PERSON_ROLES.filter(r => !s.roles.includes(r)).map(r => (
+                    {roleOptions.filter(r => !s.roles.includes(r)).map(r => (
                       <option key={r} value={r}>{r}</option>
                     ))}
                   </select>

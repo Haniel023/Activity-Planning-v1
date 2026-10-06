@@ -1,5 +1,5 @@
 import { Workbook } from 'exceljs'
-import type { ActivityPlan, MonthConfig, SelfCheckTR } from './types'
+import type { ActivityPlan, MonthConfig } from './types'
 import { monthLabel, daysInMonth, toDateStr, isWeekend, dayOfWeekAbbr, dayNumber, calcAutoProgress } from './utils'
 
 // ── Colour palette ──────────────────────────────────────────────────────────
@@ -338,98 +338,8 @@ export async function buildActivityPlanSheet(ws: WS, plan: ActivityPlan, wb: Wor
   }]
 }
 
-// ── Self Check TR Sheet ──────────────────────────────────────────────────────
-export async function buildSelfCheckSheet(ws: WS, sc2: SelfCheckTR) {
-  ws.getColumn(1).width = 5
-  ws.getColumn(2).width = 22
-  ws.getColumn(3).width = 42
-  ws.getColumn(4).width = 11; ws.getColumn(5).width = 11
-  ws.getColumn(6).width = 11; ws.getColumn(7).width = 11
-  ws.getColumn(8).width = 32
-
-  let r = 1
-
-  // Title header row
-  ws.getRow(r).height = 18
-  const titleCell = ws.getCell(r, 1); titleCell.value = 'SELF CHECK / TECHNICAL REVIEW (TR) CHECKLIST'
-  sc(titleCell, { bold: true, center: true, bg: C.colHdr, border: true, fontSize: 10 })
-  ws.mergeCells(r, 1, r, 8); r++
-
-  // PIC labels
-  ws.getRow(r).height = 14
-  const scHdr = ws.getCell(r, 4); scHdr.value = 'Self Check'; sc(scHdr, { bold: true, center: true, bg: C.scYellow, border: true })
-  ws.mergeCells(r, 4, r, 5)
-  const trHdr = ws.getCell(r, 6); trHdr.value = 'Technical Review'; sc(trHdr, { bold: true, center: true, bg: C.trBlue, border: true })
-  ws.mergeCells(r, 6, r, 7)
-  ;[1, 2, 3, 8].forEach(c2 => { ws.getCell(r, c2).border = BORDER })
-  r++
-
-  ws.getRow(r).height = 13
-  const scPIC = ws.getCell(r, 4); scPIC.value = `PIC: ${sc2.selfCheckPIC}`
-  sc(scPIC, { center: true, italic: true, bg: C.scYellow, border: true })
-  ws.mergeCells(r, 4, r, 5)
-  const trPIC = ws.getCell(r, 6); trPIC.value = `PIC: ${sc2.trPIC}`
-  sc(trPIC, { center: true, italic: true, bg: C.trBlue, border: true })
-  ws.mergeCells(r, 6, r, 7)
-  ;[1, 2, 3, 8].forEach(c2 => { ws.getCell(r, c2).border = BORDER })
-  r++
-
-  // Column headers
-  ws.getRow(r).height = 14
-  const headers = ['No.', 'Checkpoint', 'Expected Result', 'SC 1st Round', 'SC 2nd Round', 'TR 1st Round', 'TR 2nd Round', 'Remarks']
-  const hdrBgs = [C.colHdr, C.colHdr, C.colHdr, C.scYellow, C.scYellow, C.trBlue, C.trBlue, C.colHdr]
-  headers.forEach((h, i) => {
-    const c2 = ws.getCell(r, i + 1); c2.value = h
-    sc(c2, { bold: true, center: true, bg: hdrBgs[i], border: true, fontSize: 8 })
-  })
-  r++
-
-  // Checkpoint rows
-  sc2.items.forEach((item, idx) => {
-    ws.getRow(r).height = 22
-    const rowBg = idx % 2 === 0 ? undefined : C.altRow
-    const vals = [item.no, item.checkpoint, item.expectedResult, item.selfCheck1, item.selfCheck2, item.tr1, item.tr2, item.remarks]
-    const centers = [true, false, false, true, true, true, true, false]
-    const bgs = [rowBg, rowBg, rowBg, item.selfCheck1 === 'OK' ? C.done : item.selfCheck1 === 'NG' ? 'FFFEE2E2' : rowBg,
-      item.selfCheck2 === 'OK' ? C.done : item.selfCheck2 === 'NG' ? 'FFFEE2E2' : rowBg,
-      item.tr1 === 'OK' ? C.done : item.tr1 === 'NG' ? 'FFFEE2E2' : rowBg,
-      item.tr2 === 'OK' ? C.done : item.tr2 === 'NG' ? 'FFFEE2E2' : rowBg, rowBg]
-    vals.forEach((v, i) => {
-      const c2 = ws.getCell(r, i + 1); c2.value = v ?? ''
-      sc(c2, { center: centers[i], bg: bgs[i] ?? undefined, border: true, bold: i === 1, wrap: i === 2 })
-    })
-    r++
-  })
-
-  r++
-  // Version control
-  ws.getRow(r).height = 14
-  const verTitleCell = ws.getCell(r, 1); verTitleCell.value = 'VERSION CONTROL'
-  sc(verTitleCell, { bold: true, center: true, bg: C.verGreen, border: true })
-  ws.mergeCells(r, 1, r, 8); r++
-
-  ws.getRow(r).height = 13
-  ;['Version #', 'Reason for Revision', '', 'Date', 'Updated By', '', '', ''].forEach((h, i) => {
-    if (!h) return
-    const c2 = ws.getCell(r, i + 1); c2.value = h
-    sc(c2, { bold: true, center: true, bg: 'FFF2F2F2', border: true })
-  })
-  ;[3, 6, 7, 8].forEach(c2 => ws.getCell(r, c2).border = BORDER)
-  r++
-
-  sc2.versionHistory.forEach(v => {
-    ws.getRow(r).height = 13
-    const vals = [v.version, v.reason, '', v.date, v.updatedBy, '', '', '']
-    vals.forEach((val, i) => {
-      const c2 = ws.getCell(r, i + 1); c2.value = val
-      sc(c2, { center: i === 0 || i === 3 || i === 4, border: true })
-    })
-    r++
-  })
-}
-
 // ── Main export ───────────────────────────────────────────────────────────────
-export async function exportToExcel(plan: ActivityPlan, sc3: SelfCheckTR): Promise<void> {
+export async function exportToExcel(plan: ActivityPlan): Promise<void> {
   const wb = new Workbook()
   wb.creator = 'Activity Planning Tool'
   wb.created = new Date()
@@ -437,9 +347,6 @@ export async function exportToExcel(plan: ActivityPlan, sc3: SelfCheckTR): Promi
   const planSheetName = plan.type === 'development' ? 'Activity Plan(Development)' : 'Activity Plan(Support)'
   const planWS = wb.addWorksheet(planSheetName, { views: [], properties: { defaultRowHeight: 13 } })
   await buildActivityPlanSheet(planWS, plan, wb)
-
-  const scWS = wb.addWorksheet('Self Check TR', { properties: { defaultRowHeight: 13 } })
-  await buildSelfCheckSheet(scWS, sc3)
 
   const buffer = await wb.xlsx.writeBuffer()
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })

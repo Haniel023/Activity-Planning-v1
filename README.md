@@ -225,15 +225,36 @@ SMTP_PORT=587
 SMTP_USER=your@email.com
 SMTP_PASS=yourpassword
 SMTP_FROM=no-reply@yourdomain.com
+# Canonical link used in email/Teams approval notifications
 FRONTEND_ORIGIN=http://localhost:5173
+# CORS allow-list, comma-separated. Defaults (if unset) to localhost:5173 plus this
+# server's LAN IP and NAT IP on port 1011 — only set this if those defaults don't match.
+# ALLOWED_ORIGINS=http://10.164.16.18:1011,http://172.24.71.17:1011
+# Shared secret for GET /api/mh-export, which the OSS Utilities portal's MH
+# Planner polls every 30 min for planned MH (plans in approval or published).
+# Same value as the portal's ACTIVITY_PLAN_API_KEY. Export is disabled if unset.
+MH_EXPORT_API_KEY=change-me-long-random-string
+# Encrypts approval signature images at rest (AES-256-GCM) — normal plan reads only
+# ever return a "signed" placeholder, never the real image; it's decrypted only for
+# PDF/Excel export. Generate one with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# Required to save NEW signatures (saving fails without it); existing unencrypted
+# signatures keep working either way. Never change this once set — doing so makes
+# every signature encrypted under the old key permanently undecryptable.
+SIGNATURE_ENCRYPTION_KEY=change-me-long-random-string
 ```
 
 **`.env.production`** — Frontend (API base URL)
 ```env
-VITE_API_BASE=http://your-server-ip:1101
+# Leave VITE_API_BASE unset if the API is reachable on the same host the frontend was
+# loaded from (just a different port) — the frontend then derives the API origin from
+# window.location at runtime, which works correctly whether a client reaches this server
+# via its LAN IP or a NAT'd address. Only set VITE_API_BASE to pin a single fixed origin,
+# e.g. if the API lives behind a different host/reverse-proxy path.
+# VITE_API_BASE=http://your-server-ip:1101
 ```
 
-> **Note:** `.env.production` is loaded only during `npm run build` — not at runtime. Ensure `VITE_API_BASE` is set before building for production.
+> **Note:** `.env.production` is loaded only during `npm run build` — not at runtime.
 
 ### Production Build
 

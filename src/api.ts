@@ -1,7 +1,15 @@
-import type { ActivityPlan, ApprovalSection, SelfCheckTR, ActivityRequest, ProgressUpdate, GroupType, CompanyHoliday, ApproverEntry } from './types'
+import type { ActivityPlan, ApprovalSection, ActivityRequest, ProgressUpdate, GroupType, CompanyHoliday, ApproverEntry } from './types'
 import { calcPlanStatus, migratePersonsToList, migrateToStakeholders } from './utils'
 
-const BASE = (import.meta.env.VITE_API_BASE ?? '') + '/api'
+// VITE_API_BASE (if set at build time) pins the API to one fixed address.
+// This server is reachable at both its LAN IP and a NAT'd address on the same ports,
+// so by default we derive the API origin from whatever host the browser actually used
+// to load the page — the same build then works correctly from either address.
+const BASE = import.meta.env.VITE_API_BASE
+  ? import.meta.env.VITE_API_BASE + '/api'
+  : import.meta.env.DEV
+    ? '/api'
+    : `${window.location.protocol}//${window.location.hostname}:${import.meta.env.VITE_API_PORT ?? '1101'}/api`
 
 export interface PlanSummary {
   id: string
@@ -15,6 +23,7 @@ export interface PlanSummary {
   approvalCount: number
   projectStatus: string
   projectProgress: number
+  projectReason: string
   picName: string
   itNumber: string
   groupType: GroupType | null
@@ -50,11 +59,12 @@ export const api = {
         groupType: row.groupType ?? null,
         projectStatus: ps.label,
         projectProgress: ps.progress,
+        projectReason: ps.reason,
       }
     })
   },
 
-  async getPlan(id: string): Promise<{ plan: ActivityPlan; selfCheck: SelfCheckTR | null }> {
+  async getPlan(id: string): Promise<{ plan: ActivityPlan }> {
     const result = await req(`${BASE}/plans/${id}`)
     const plan = result.plan as ActivityPlan
     if (!plan.personsList || plan.personsList.length === 0) {
@@ -63,22 +73,29 @@ export const api = {
     if (!plan.stakeholders || plan.stakeholders.length === 0) {
       plan.stakeholders = migrateToStakeholders(plan.personsList, plan.persons as any, plan.type)
     }
-    return { plan, selfCheck: result.selfCheck }
+    return { plan }
   },
 
-  async createPlan(plan: ActivityPlan, selfCheck: SelfCheckTR): Promise<{ id: string }> {
+  // Fetches decrypted signature images — only ever called right before exporting,
+  // never on normal plan load. Normal loads only carry a "signed" placeholder.
+  async getExportApprovals(id: string): Promise<ApprovalSection> {
+    const result = await req(`${BASE}/plans/${id}/signatures`)
+    return result.approvals
+  },
+
+  async createPlan(plan: ActivityPlan): Promise<{ id: string }> {
     return req(`${BASE}/plans`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan, selfCheck }),
+      body: JSON.stringify({ plan }),
     })
   },
 
-  async updatePlan(id: string, plan: ActivityPlan, selfCheck: SelfCheckTR): Promise<void> {
+  async updatePlan(id: string, plan: ActivityPlan): Promise<void> {
     await req(`${BASE}/plans/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan, selfCheck }),
+      body: JSON.stringify({ plan }),
     })
   },
 

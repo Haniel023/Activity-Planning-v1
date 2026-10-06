@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { PlanType } from '../types'
-import { createDefaultPlan, createDefaultSelfCheck } from '../utils'
+import { createDefaultPlan } from '../utils'
 import { api } from '../api'
 import LandingPage from '../components/LandingPage'
 
@@ -14,8 +14,7 @@ export default function NewPlan() {
     setCreating(true)
     try {
       const plan = createDefaultPlan(type)
-      const selfCheck = createDefaultSelfCheck()
-      const { id } = await api.createPlan(plan, selfCheck)
+      const { id } = await api.createPlan(plan)
       navigate(`/plan/${id}`)
     } catch (err) {
       alert('Failed to create plan: ' + (err as Error).message)

@@ -1,5 +1,4 @@
-import type { ActivityRow, ActivityPlan, MonthConfig, PlanType, DevPersons, SupportPersons, SelfCheckTR, DayMark, PICEntry, PersonEntry, Stakeholder } from './types'
-import { SELF_CHECK_DEFAULTS } from './types'
+import type { ActivityRow, ActivityPlan, MonthConfig, PlanType, DevPersons, SupportPersons, DayMark, PICEntry, PersonEntry, Stakeholder, ApprovalSection } from './types'
 
 export function generateId() {
   return Math.random().toString(36).slice(2, 9)
@@ -221,6 +220,24 @@ export function autoFillNameForRole(role: string, type: PlanType, persons: DevPe
   return ''
 }
 
+// Replaces any freshly-uploaded signature images (still held in local state right after
+// an upload/save) with an opaque placeholder — called right after a save/submit/approve
+// action so a signer's own image never lingers visible in the UI once persisted. Server
+// responses already redact signatures on every subsequent load; this just closes the gap
+// for the remainder of the current browser session before a reload would do the same.
+const SIGNATURE_PLACEHOLDER = '[[signed]]'
+export function hideSignedImages(approvals: ApprovalSection): ApprovalSection {
+  const keys = ['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2', 'approvedBy3'] as const
+  const result = { ...approvals }
+  for (const key of keys) {
+    const slot = result[key]
+    if (slot?.signatureImage?.startsWith('data:image/')) {
+      result[key] = { ...slot, signatureImage: SIGNATURE_PLACEHOLDER }
+    }
+  }
+  return result
+}
+
 // ── Plan creation ─────────────────────────────────────────────────────────────
 
 function makeRow(number: string, name: string, isPhase: boolean, months: MonthConfig[]): ActivityRow {
@@ -285,6 +302,23 @@ export function createDefaultPlan(type: PlanType): ActivityPlan {
     makeRow('3.1', 'Evaluation', false, months),
   ]
 
+  const implementationActivities: ActivityRow[] = [
+    makeRow('1.0', 'Kick-Off Meeting', true, months),
+    makeRow('1.1', 'Kick-Off Meeting', false, months),
+    makeRow('2.0', 'Technical Meeting', true, months),
+    makeRow('2.1', 'Technical Meeting', false, months),
+    makeRow('3.0', 'Preparation', true, months),
+    makeRow('3.1', 'Preparation', false, months),
+    makeRow('4.0', 'Actual Activities - Change Day', true, months),
+    makeRow('4.1', 'Actual Activities - Change Day', false, months),
+    makeRow('5.0', 'Testing', true, months),
+    makeRow('5.1', 'Testing', false, months),
+    makeRow('6.0', 'Judgement', true, months),
+    makeRow('6.1', 'Judgement', false, months),
+    makeRow('7.0', 'Closing', true, months),
+    makeRow('7.1', 'Closing', false, months),
+  ]
+
   const devPersons: DevPersons = { requestor: '', designer: '', developer: '', se: '', pm: '' }
   const supportPersons: SupportPersons = { requestor: '', smartMember: '', se: '', pm: '' }
 
@@ -304,20 +338,14 @@ export function createDefaultPlan(type: PlanType): ActivityPlan {
       approvedBy1: { name: '', role: 'SUPERVISOR',       remarks: '' },
       approvedBy2: { name: '', role: 'SECTION MANAGER',  remarks: '' },
     },
-    activities: type === 'development' ? devActivities : type === 'training' ? trainingActivities : supportActivities,
+    activities: type === 'development' ? devActivities
+      : type === 'training' ? trainingActivities
+      : type === 'implementation' ? implementationActivities
+      : supportActivities,
     months,
     otDays: [],
     status: 'draft',
     versionHistory: [{ version: '1.00', date: today, reason: 'Initial creation', by: '' }],
-  }
-}
-
-export function createDefaultSelfCheck(): SelfCheckTR {
-  return {
-    selfCheckPIC: '',
-    trPIC: '',
-    items: SELF_CHECK_DEFAULTS.map(i => ({ ...i })),
-    versionHistory: [{ version: '1.00', reason: 'N/A', date: new Date().toISOString().slice(0, 10), updatedBy: '' }],
   }
 }
 
@@ -328,6 +356,14 @@ export interface PlanStatus {
   progress: number
   daysLeft: number | null
   expectedProgress: number
+  // Short, always-available explanation of why the label is what it is — cheap to
+  // compute (pure math on progress/expectedProgress/daysLeft), shown next to the
+  // badge wherever it appears. A deeper "which activities" breakdown lives in Insights.
+  reason: string
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
 export function calcPlanStatus(plan: ActivityPlan): PlanStatus {
@@ -347,9 +383,9 @@ export function calcPlanStatus(plan: ActivityPlan): PlanStatus {
   }
   const progress = totalWeight > 0 ? weightedProgress / totalWeight : 0
 
-  if (progress >= 100) return { label: 'COMPLETE', progress: 100, daysLeft: 0, expectedProgress: 100 }
+  if (progress >= 100) return { label: 'COMPLETE', progress: 100, daysLeft: 0, expectedProgress: 100, reason: 'All activities completed.' }
 
-  if (!plan.targetDate) return { label: 'NOT STARTED', progress, daysLeft: null, expectedProgress: 0 }
+  if (!plan.targetDate) return { label: 'NOT STARTED', progress, daysLeft: null, expectedProgress: 0, reason: 'No target date set yet.' }
 
   const todayMs = Date.now()
   const targetMs = new Date(plan.targetDate).getTime()
@@ -358,16 +394,35 @@ export function calcPlanStatus(plan: ActivityPlan): PlanStatus {
     : plan.months.length > 0
       ? new Date(plan.months[0].year, plan.months[0].month, 1).getTime()
       : todayMs
-  if (todayMs < startMs) return { label: 'NOT STARTED', progress, daysLeft: null, expectedProgress: 0 }
+  if (todayMs < startMs) return { label: 'NOT STARTED', progress, daysLeft: null, expectedProgress: 0, reason: "Start date hasn't arrived yet." }
   const totalMs = targetMs - startMs
   const elapsedMs = todayMs - startMs
   const expectedProgress = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0
   const daysLeft = Math.ceil((targetMs - todayMs) / 86400000)
+  const gap = expectedProgress - progress
 
-  if (daysLeft < 0) return { label: 'DELAYED', progress, daysLeft, expectedProgress }
-  if (progress >= expectedProgress - 5) return { label: 'ON TIME', progress, daysLeft, expectedProgress }
-  if (progress >= expectedProgress - 20) return { label: 'AT RISK', progress, daysLeft, expectedProgress }
-  return { label: 'DELAYED', progress, daysLeft, expectedProgress }
+  if (daysLeft < 0) {
+    return {
+      label: 'DELAYED', progress, daysLeft, expectedProgress,
+      reason: `Target date passed ${plural(Math.abs(daysLeft), 'day')} ago, at ${progress.toFixed(0)}% complete.`,
+    }
+  }
+  if (progress >= expectedProgress - 5) {
+    return {
+      label: 'ON TIME', progress, daysLeft, expectedProgress,
+      reason: gap <= 0 ? `Ahead of pace by ${Math.abs(gap).toFixed(0)} points.` : 'Within 5 points of the expected pace.',
+    }
+  }
+  if (progress >= expectedProgress - 20) {
+    return {
+      label: 'AT RISK', progress, daysLeft, expectedProgress,
+      reason: `${gap.toFixed(0)} points behind pace, with ${plural(daysLeft, 'day')} left — likely an activity hasn't been started or updated yet.`,
+    }
+  }
+  return {
+    label: 'DELAYED', progress, daysLeft, expectedProgress,
+    reason: `${gap.toFixed(0)} points behind pace with only ${plural(daysLeft, 'day')} left — multiple activities are likely behind schedule.`,
+  }
 }
 
 // Auto-progress: 100% if DONE, else actual marks ÷ plan marks

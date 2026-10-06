@@ -84,8 +84,9 @@ function ActivityRiskRow({ a }: { a: ActivityInsight }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function InsightsPanel({ insight, planStatus, onClose }: Props) {
-  // Not available when plan isn't fully approved + in progress
-  if (planStatus !== 'published') {
+  // Available once the plan has been submitted — actuals can be plotted from
+  // ongoing_approval onward, so forecasting makes sense from that point too.
+  if (planStatus !== 'ongoing_approval' && planStatus !== 'published') {
     return (
       <aside className="w-80 flex-shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-hidden">
         <PanelHeader onClose={onClose} />
@@ -98,7 +99,7 @@ export default function InsightsPanel({ insight, planStatus, onClose }: Props) {
           </div>
           <p className="text-sm font-medium text-gray-600">Insights not yet available</p>
           <p className="text-xs text-gray-400 leading-relaxed">
-            Forecast insights are available once the plan is fully approved and in progress.
+            Forecast insights are available once the plan has been submitted for approval.
           </p>
         </div>
       </aside>

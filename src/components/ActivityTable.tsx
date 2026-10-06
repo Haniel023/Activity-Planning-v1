@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type { ActivityPlan, ActivityRow, MonthConfig, PICEntry, RACI, CompanyHoliday } from '../types'
 import {
   generateId, generateDayMarks, isWeekend, dayOfWeekAbbr, dayNumber,
@@ -77,6 +78,13 @@ const ROLE_CHIP: Record<string, { bg: string; text: string; border: string }> = 
   'PM':                      { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200'   },
 }
 
+// Pixel offsets for the frozen (sticky) column block: #, Activity, PIC+RACI, Status, %, MH,
+// h/d, Start, Days, Sched(Plan/Actual label) — all pinned so only the day-plotting grid scrolls.
+const FREEZE = {
+  hash: 0, activity: 32, pic: 208, r: 288, a: 308, c: 328, i: 348,
+  status: 368, pct: 432, mh: 464, hpd: 504, start: 540, days: 620, sched: 652,
+}
+
 interface Props {
   plan: ActivityPlan
   onChange: (plan: ActivityPlan) => void
@@ -118,16 +126,25 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
   )
   const otSet = useMemo(() => new Set(otDays), [otDays])
 
-  // PIC roles: extract from stakeholders → personsList → fallback
-  const personRoles = useMemo(() => {
+  // PIC names: extract from stakeholders → personsList (stakeholder input stays role-based;
+  // only the names get surfaced here for the RACI PIC dropdown)
+  const personNames = useMemo(() => {
     const stk = plan.stakeholders
-    if (stk && stk.length > 0) return [...new Set(stk.flatMap(s => s.roles))]
+    if (stk && stk.length > 0) return [...new Set(stk.map(s => s.name).filter(Boolean))]
     const list = plan.personsList
-    if (list && list.length > 0) return [...new Set(list.map(p => p.role))]
-    return plan.type === 'development'
-      ? ['Requestor', 'Designer', 'Developer', 'Project Leader', 'Project Manager', 'Technical Reviewer']
-      : ['Requestor', 'Support PIC', 'System Expert', 'Project Leader', 'Project Supervisor']
-  }, [plan.stakeholders, plan.personsList, plan.type])
+    if (list && list.length > 0) return [...new Set(list.map(p => p.name).filter(Boolean))]
+    return []
+  }, [plan.stakeholders, plan.personsList])
+
+  // Color chip per PIC name, derived from that stakeholder's first assigned role
+  const personChip = useMemo(() => {
+    const map = new Map<string, { bg: string; text: string; border: string }>()
+    for (const s of plan.stakeholders ?? []) {
+      const chip = s.roles.map(r => ROLE_CHIP[r]).find(Boolean)
+      if (chip && s.name) map.set(s.name, chip)
+    }
+    return map
+  }, [plan.stakeholders])
 
   // Calendar year for holiday manager preview
   const calendarYear = months[0]?.year ?? new Date().getFullYear()
@@ -332,7 +349,11 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
           </div>
           {!readOnly && !partialEdit && <button onClick={() => addLast(true)} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">+ Phase</button>}
           {!readOnly && !partialEdit && <button onClick={() => addLast(false)} className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded">+ Activity</button>}
-          {partialEdit && <span className="text-[10px] text-amber-600 font-medium bg-amber-50 px-2 py-1 rounded border border-amber-200">Fully Approved — actual & status only · Weekend/holiday actual available for emergency OT</span>}
+          {partialEdit && (
+            <span className="text-[10px] text-amber-600 font-medium bg-amber-50 px-2 py-1 rounded border border-amber-200">
+              {plan.status === 'ongoing_approval' ? 'Pending Approval' : 'Fully Approved'} — actual & status only · Weekend/holiday actual available for emergency OT
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-400 flex-shrink-0">
           <span><span className="text-blue-600 font-bold">○</span> Plan &nbsp;<span className="text-orange-500 font-bold">●</span> Actual</span>
@@ -361,35 +382,36 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
           <thead className="sticky top-0 z-10">
             <tr className="bg-gray-50">
               <th className="border border-gray-200 px-1 py-1.5 text-center bg-gray-100 text-gray-600 w-8 sticky left-0 z-20">#</th>
-              <th className="border border-gray-200 px-2 py-1.5 text-left bg-gray-100 text-gray-600 min-w-44 sticky left-8 z-20">Activity</th>
-              <th className="border border-gray-200 px-1 py-1.5 text-center bg-gray-100 text-gray-600 w-20">PIC</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-20" colSpan={4}>
+              <th className="border border-gray-200 px-2 py-1.5 text-left bg-gray-100 text-gray-600 w-44 sticky z-20" style={{ left: FREEZE.activity }}>Activity</th>
+              <th className="border border-gray-200 px-1 py-1.5 text-center bg-gray-100 text-gray-600 w-20 sticky z-20" style={{ left: FREEZE.pic }}>PIC</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-20 sticky z-20" style={{ left: FREEZE.r }} colSpan={4}>
                 <span className="inline-flex items-center gap-1">
-                  <span className="text-[10px]">Responsibility</span>
+                  <span className="text-[10px]">RACI</span>
                   <button type="button" onClick={() => setShowRaciInfo(true)}
                     className="w-3.5 h-3.5 rounded-full bg-blue-200 text-blue-700 text-[9px] font-bold leading-none flex items-center justify-center hover:bg-blue-300 transition-colors" title="RACI meaning">i</button>
                 </span>
               </th>
-              <th className="border border-gray-200 px-1 py-1.5 text-center bg-gray-100 text-gray-600 w-16">Status</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-8">%</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10" title="Man-hours">MH</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-purple-500 w-9" title="Hours per day allocated">h/d</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-green-600 w-20 whitespace-nowrap" title="Auto-plot start date">Start</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-8 whitespace-nowrap" title="Auto-counted from Plan marks">Days</th>
-              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10">Sched.</th>
+              <th className="border border-gray-200 px-1 py-1.5 text-center bg-gray-100 text-gray-600 w-16 sticky z-20" style={{ left: FREEZE.status }}>Status</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-8 sticky z-20" style={{ left: FREEZE.pct }}>%</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10 sticky z-20" style={{ left: FREEZE.mh }} title="Man-hours">MH</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-purple-500 w-9 sticky z-20" style={{ left: FREEZE.hpd }} title="Hours per day allocated">h/d</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-green-600 w-20 whitespace-nowrap sticky z-20" style={{ left: FREEZE.start }} title="Auto-plot start date">Start</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-8 whitespace-nowrap sticky z-20" style={{ left: FREEZE.days }} title="Auto-counted from Plan marks">Days</th>
+              <th className="border border-gray-200 px-0 py-1.5 text-center bg-gray-100 text-gray-600 w-10 sticky z-20" style={{ left: FREEZE.sched }}>Sched.</th>
               {monthGroups.map(({ label, span }) => (
                 <th key={label} colSpan={span} className="border border-gray-200 px-1 py-1.5 text-center bg-blue-50 text-blue-700 font-semibold whitespace-nowrap">{label}</th>
               ))}
-              <th className="border border-gray-200 px-1 py-1.5 text-center bg-gray-100 text-gray-600 w-12">Act.</th>
             </tr>
             <tr className="bg-gray-50">
               <th className="border border-gray-200 bg-gray-100 sticky left-0 z-20" />
-              <th className="border border-gray-200 bg-gray-100 sticky left-8 z-20" />
-              <th className="border border-gray-200 bg-gray-100" />
+              <th className="border border-gray-200 bg-gray-100 sticky z-20" style={{ left: FREEZE.activity }} />
+              <th className="border border-gray-200 bg-gray-100 sticky z-20" style={{ left: FREEZE.pic }} />
               {(['R','A','C','I'] as const).map(l => (
-                <th key={l} className="border border-gray-200 bg-gray-100 text-gray-500 text-center w-5 font-semibold">{l}</th>
+                <th key={l} className="border border-gray-200 bg-gray-100 text-gray-500 text-center w-5 font-semibold sticky z-20" style={{ left: FREEZE[l.toLowerCase() as 'r'|'a'|'c'|'i'] }}>{l}</th>
               ))}
-              {Array.from({ length: 7 }).map((_, i) => <th key={i} className="border border-gray-200 bg-gray-100" />)}
+              {([FREEZE.status, FREEZE.pct, FREEZE.mh, FREEZE.hpd, FREEZE.start, FREEZE.days, FREEZE.sched]).map((left, i) => (
+                <th key={i} className="border border-gray-200 bg-gray-100 sticky z-20" style={{ left }} />
+              ))}
               {viewMode === 'daily'
                 ? allDays.map(date => {
                     const wknd = isWeekend(date)
@@ -440,7 +462,6 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
                     <th key={`${wg.monthLabel}-${wg.weekLabel}`} className="border border-gray-200 text-center w-10 bg-blue-50 text-blue-600 font-semibold py-1">{wg.weekLabel}</th>
                   ))
               }
-              <th className="border border-gray-200 bg-gray-100" />
             </tr>
           </thead>
           <tbody>
@@ -452,7 +473,8 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
                 weekGroups={weekGroups}
                 otSet={otSet}
                 viewMode={viewMode}
-                personRoles={personRoles}
+                personNames={personNames}
+                personChip={personChip}
                 readOnly={readOnly}
                 partialEdit={partialEdit}
                 companyHolidayMap={companyHolidayMap}
@@ -477,31 +499,52 @@ export default function ActivityTable({ plan, onChange, readOnly, partialEdit }:
   )
 }
 
-// ── PIC role chip selector ────────────────────────────────────────────────────
+// ── PIC name chip selector ────────────────────────────────────────────────────
 
-function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
-  value: string; onChange: (v: string) => void; roles: string[]
+function PICSelect({ value, onChange, names, chipMap, onDelete, canDelete }: {
+  value: string; onChange: (v: string) => void; names: string[]
+  chipMap: Map<string, { bg: string; text: string; border: string }>
   onDelete?: () => void; canDelete?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
+  function openPanel() {
+    const rect = btnRef.current?.getBoundingClientRect()
+    if (rect) setPos({ top: rect.bottom + 2, left: rect.left, width: Math.max(rect.width, 192) })
+    setOpen(true)
+    setSearch('')
+  }
+
+  // Close on outside click (button or the portaled panel), and on scroll of any ancestor
+  // (the panel is fixed-positioned via a rect snapshot, so it can't track a live scroll).
   useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) { setOpen(false); setSearch('') }
+    const handleClick = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (wrapRef.current?.contains(t)) return
+      if (panelRef.current?.contains(t)) return
+      setOpen(false); setSearch('')
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    const handleScroll = () => { setOpen(false); setSearch('') }
+    document.addEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
   }, [open])
 
-  const chip = ROLE_CHIP[value]
-  const filtered = roles.filter(r => r.toLowerCase().includes(search.toLowerCase()))
+  const chip = chipMap.get(value)
+  const filtered = names.filter(n => n.toLowerCase().includes(search.toLowerCase()))
 
   return (
     <div ref={wrapRef} className="relative w-full">
-      <button type="button" onClick={() => { setOpen(!open); setSearch('') }}
+      <button ref={btnRef} type="button" onClick={() => (open ? setOpen(false) : openPanel())}
         className={[
           'w-full flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium cursor-pointer transition-colors',
           chip
@@ -515,22 +558,23 @@ function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
         </svg>
       </button>
 
-      {open && (
-        <div className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-200 rounded-xl shadow-xl w-48 overflow-hidden">
+      {open && pos && createPortal(
+        <div ref={panelRef} className="fixed z-9999 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}>
           <div className="p-1.5 border-b border-gray-100">
             <input autoFocus className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-300 bg-gray-50"
-              placeholder="Search role..." value={search} onChange={e => setSearch(e.target.value)} />
+              placeholder="Search name..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <div className="py-1 max-h-48 overflow-y-auto">
-            {filtered.map(role => {
-              const c = ROLE_CHIP[role]
+            {filtered.map(name => {
+              const c = chipMap.get(name)
               return (
-                <button key={role} type="button"
-                  className={['w-full text-left px-2.5 py-1.5 flex items-center gap-2 transition-colors', value === role ? 'bg-blue-50' : 'hover:bg-gray-50'].join(' ')}
-                  onClick={() => { onChange(role); setOpen(false); setSearch('') }}
+                <button key={name} type="button"
+                  className={['w-full text-left px-2.5 py-1.5 flex items-center gap-2 transition-colors', value === name ? 'bg-blue-50' : 'hover:bg-gray-50'].join(' ')}
+                  onClick={() => { onChange(name); setOpen(false); setSearch('') }}
                 >
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${c?.bg ?? 'bg-gray-100'} ${c?.text ?? 'text-gray-600'} ${c?.border ?? 'border-gray-200'}`}>{role}</span>
-                  {value === role && <svg className="w-3 h-3 text-blue-500 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${c?.bg ?? 'bg-gray-100'} ${c?.text ?? 'text-gray-600'} ${c?.border ?? 'border-gray-200'}`}>{name}</span>
+                  {value === name && <svg className="w-3 h-3 text-blue-500 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
                 </button>
               )
             })}
@@ -546,7 +590,8 @@ function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
                 onClick={() => { onDelete(); setOpen(false) }}>Remove row</button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -556,7 +601,8 @@ function PICSelect({ value, onChange, roles, onDelete, canDelete }: {
 
 interface RowProps {
   row: ActivityRow; allDays: string[]; weekGroups: WeekGroup[]; otSet: Set<string>
-  viewMode: ViewMode; personRoles: string[]; readOnly?: boolean; partialEdit?: boolean
+  viewMode: ViewMode; personNames: string[]; personChip: Map<string, { bg: string; text: string; border: string }>
+  readOnly?: boolean; partialEdit?: boolean
   companyHolidayMap: Map<string, string>
   onChange: (c: Partial<ActivityRow>) => void | undefined
   onChangeStatus: (status: ActivityRow['status']) => void
@@ -570,7 +616,7 @@ interface RowProps {
 }
 
 function ActivityRowUI(p: RowProps) {
-  const { row, allDays, weekGroups, otSet, viewMode, personRoles, companyHolidayMap } = p
+  const { row, allDays, weekGroups, otSet, viewMode, personNames, personChip, companyHolidayMap } = p
   const fieldLocked = p.readOnly || p.partialEdit
 
   const markMap = useMemo(() => {
@@ -586,9 +632,14 @@ function ActivityRowUI(p: RowProps) {
           <input className="w-8 bg-transparent text-xs font-semibold text-blue-800 focus:outline-none disabled:pointer-events-none"
             disabled={fieldLocked} value={row.number} onChange={e => p.onChange({ number: e.target.value })} />
         </td>
-        <td className="border border-gray-200 px-2 py-1 sticky left-8 bg-blue-50 z-10" colSpan={13}>
-          <AutoTextarea className="w-full bg-transparent text-xs font-semibold text-blue-800 focus:outline-none disabled:pointer-events-none"
-            value={row.name} disabled={fieldLocked} onChange={v => p.onChange({ name: v })} />
+        <td className="border border-gray-200 px-2 py-1 sticky bg-blue-50 z-10" style={{ left: FREEZE.activity }} colSpan={13}>
+          <div className="flex items-start gap-1">
+            {!p.readOnly && !p.partialEdit && (
+              <button onClick={p.onDelete} className="text-red-300 hover:text-red-500 text-xs shrink-0" title="Delete phase">✕</button>
+            )}
+            <AutoTextarea className="w-full bg-transparent text-xs font-semibold text-blue-800 focus:outline-none disabled:pointer-events-none"
+              value={row.name} disabled={fieldLocked} onChange={v => p.onChange({ name: v })} />
+          </div>
         </td>
         {viewMode === 'daily'
           ? allDays.map(date => {
@@ -599,9 +650,6 @@ function ActivityRowUI(p: RowProps) {
             })
           : weekGroups.map((_wg, i) => <td key={i} className="border border-gray-200 w-10 bg-blue-50" />)
         }
-        <td className="border border-gray-200 px-1 text-center">
-          {!p.readOnly && !p.partialEdit && <button onClick={p.onDelete} className="text-red-300 hover:text-red-500 text-xs">✕</button>}
-        </td>
       </tr>
     )
   }
@@ -655,17 +703,17 @@ function ActivityRowUI(p: RowProps) {
   }
 
   const picRaciCell = (
-    <td className="border border-gray-200 px-1 py-0.5 align-top" colSpan={5} rowSpan={2}>
+    <td className="border border-gray-200 px-1 py-0.5 align-top sticky z-10 bg-white" style={{ left: FREEZE.pic }} colSpan={5} rowSpan={2}>
       <div className="space-y-0.5">
         {row.picEntries.map(entry => (
           <div key={entry.id} className="flex items-center gap-1">
             <div className="w-20 shrink-0">
               {fieldLocked ? (
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border block truncate ${ROLE_CHIP[entry.pic]?.bg ?? 'bg-gray-50'} ${ROLE_CHIP[entry.pic]?.text ?? 'text-gray-500'} ${ROLE_CHIP[entry.pic]?.border ?? 'border-gray-200'}`}>
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border block truncate ${personChip.get(entry.pic)?.bg ?? 'bg-gray-50'} ${personChip.get(entry.pic)?.text ?? 'text-gray-500'} ${personChip.get(entry.pic)?.border ?? 'border-gray-200'}`}>
                   {entry.pic || '—'}
                 </span>
               ) : (
-                <PICSelect value={entry.pic} onChange={v => p.onUpdatePIC(entry.id, { pic: v })} roles={personRoles} canDelete={false} onDelete={undefined} />
+                <PICSelect value={entry.pic} onChange={v => p.onUpdatePIC(entry.id, { pic: v })} names={personNames} chipMap={personChip} canDelete={false} onDelete={undefined} />
               )}
             </div>
             {(['r','a','c','i'] as (keyof RACI)[]).map(k => (
@@ -694,15 +742,23 @@ function ActivityRowUI(p: RowProps) {
           <input className="w-8 bg-transparent text-xs text-gray-600 focus:outline-none disabled:pointer-events-none"
             disabled={fieldLocked} value={row.number} onChange={e => p.onChange({ number: e.target.value })} />
         </td>
-        <td className="border border-gray-200 px-2 py-0.5 sticky left-8 bg-white z-10 align-top" rowSpan={2}>
-          <AutoTextarea className="w-full bg-transparent text-xs text-gray-800 focus:outline-none min-w-40 disabled:pointer-events-none"
-            value={row.name} disabled={fieldLocked} onChange={v => p.onChange({ name: v })} />
+        <td className="border border-gray-200 px-2 py-0.5 sticky bg-white z-10 align-top" style={{ left: FREEZE.activity }} rowSpan={2}>
+          <div className="flex items-start gap-1">
+            {!p.readOnly && !p.partialEdit && (
+              <div className="flex flex-col items-center gap-0.5 shrink-0 pt-0.5">
+                <button onClick={p.onAddActivity} className="text-blue-400 hover:text-blue-600 text-[10px] leading-none" title="Add activity below">+row</button>
+                <button onClick={p.onDelete} className="text-red-300 hover:text-red-500 text-[10px] leading-none" title="Delete row">✕</button>
+              </div>
+            )}
+            <AutoTextarea className="w-full bg-transparent text-xs text-gray-800 focus:outline-none min-w-40 disabled:pointer-events-none"
+              value={row.name} disabled={fieldLocked} onChange={v => p.onChange({ name: v })} />
+          </div>
         </td>
 
         {picRaciCell}
 
         {/* Status */}
-        <td className="border border-gray-200 px-0.5 py-0.5 align-top" rowSpan={2}>
+        <td className="border border-gray-200 px-0.5 py-0.5 align-top sticky z-10 bg-white" style={{ left: FREEZE.status }} rowSpan={2}>
           <select className={`w-full text-xs bg-transparent focus:outline-none font-medium ${STATUS_COLOR[row.status] ?? 'text-gray-500'} disabled:pointer-events-none`}
             value={row.status} title={row.status} disabled={p.readOnly}
             onChange={e => p.onChangeStatus(e.target.value as ActivityRow['status'])}>
@@ -711,7 +767,7 @@ function ActivityRowUI(p: RowProps) {
         </td>
 
         {/* Progress % */}
-        <td className="border border-gray-200 px-0 py-0.5 align-top" rowSpan={2}>
+        <td className="border border-gray-200 px-0 py-0.5 align-top sticky z-10 bg-white" style={{ left: FREEZE.pct }} rowSpan={2}>
           {p.partialEdit || row.autoProgress !== false ? (
             <div className="flex flex-col items-center">
               <span className="text-xs font-medium text-blue-600 text-center w-full leading-tight pt-0.5">{calcAutoProgress(row)}</span>
@@ -733,7 +789,7 @@ function ActivityRowUI(p: RowProps) {
         </td>
 
         {/* MH */}
-        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center" rowSpan={2}>
+        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center sticky z-10 bg-white" style={{ left: FREEZE.mh }} rowSpan={2}>
           <input type="number" min={0} step={0.5}
             className="w-full text-xs bg-transparent focus:outline-none text-center text-gray-700 font-medium disabled:pointer-events-none"
             title="Man-hours" disabled={fieldLocked} value={row.mh}
@@ -742,7 +798,7 @@ function ActivityRowUI(p: RowProps) {
         </td>
 
         {/* h/d */}
-        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center" rowSpan={2} title="Hours per day allocated">
+        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center sticky z-10 bg-white" style={{ left: FREEZE.hpd }} rowSpan={2} title="Hours per day allocated">
           <input type="number" min={0.5} max={24} step={0.5}
             className="w-full text-[10px] bg-transparent focus:outline-none text-center text-purple-600 font-semibold disabled:pointer-events-none"
             disabled={fieldLocked} value={row.hoursPerDay ?? 8}
@@ -751,7 +807,7 @@ function ActivityRowUI(p: RowProps) {
         </td>
 
         {/* Start date for auto-plotting */}
-        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center" rowSpan={2} title="Auto-plot start date">
+        <td className="border border-gray-200 px-0.5 py-0.5 align-middle text-center sticky z-10 bg-white" style={{ left: FREEZE.start }} rowSpan={2} title="Auto-plot start date">
           <input type="date"
             className="w-full text-[9px] bg-transparent focus:outline-none text-center text-green-700 disabled:pointer-events-none"
             disabled={fieldLocked} value={row.startDate ?? ''}
@@ -760,26 +816,17 @@ function ActivityRowUI(p: RowProps) {
         </td>
 
         {/* Working days */}
-        <td className="border border-gray-200 px-0 py-0.5 align-top" rowSpan={2} title="Auto-counted from Plan marks.">
+        <td className="border border-gray-200 px-0 py-0.5 align-top sticky z-10 bg-white" style={{ left: FREEZE.days }} rowSpan={2} title="Auto-counted from Plan marks.">
           <input type="number" min={0} className="w-full text-xs bg-transparent focus:outline-none text-center text-blue-600 font-medium disabled:pointer-events-none"
             disabled={fieldLocked} value={row.workingDays} onChange={e => p.onChange({ workingDays: Number(e.target.value) })} />
         </td>
 
-        <td className="border border-gray-200 px-0.5 py-0.5 text-center text-blue-600 font-semibold text-xs whitespace-nowrap bg-blue-50">Plan</td>
+        <td className="border border-gray-200 px-0.5 py-0.5 text-center text-blue-600 font-semibold text-xs whitespace-nowrap bg-blue-50 sticky z-10" style={{ left: FREEZE.sched }}>Plan</td>
         {viewMode === 'daily' ? allDays.map(date => dayCell(date, 'plan')) : weekGroups.map(wg => weekCell(wg, 'plan'))}
-
-        <td className="border border-gray-200 px-0.5 py-0.5 text-center align-top" rowSpan={2}>
-          {!p.readOnly && !p.partialEdit && (
-            <div className="flex flex-col items-center gap-0.5">
-              <button onClick={p.onAddActivity} className="text-blue-400 hover:text-blue-600 text-[10px]" title="Add activity below">+row</button>
-              <button onClick={p.onDelete} className="text-red-300 hover:text-red-500 text-[10px]" title="Delete row">✕</button>
-            </div>
-          )}
-        </td>
       </tr>
 
       <tr className="hover:bg-gray-50">
-        <td className="border border-gray-200 px-0.5 py-0.5 text-center text-orange-500 font-semibold text-xs whitespace-nowrap bg-orange-50">Actual</td>
+        <td className="border border-gray-200 px-0.5 py-0.5 text-center text-orange-500 font-semibold text-xs whitespace-nowrap bg-orange-50 sticky z-10" style={{ left: FREEZE.sched }}>Actual</td>
         {viewMode === 'daily' ? allDays.map(date => dayCell(date, 'actual')) : weekGroups.map(wg => weekCell(wg, 'actual'))}
       </tr>
     </>

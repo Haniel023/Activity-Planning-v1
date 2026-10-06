@@ -1,11 +1,12 @@
 import express from 'express'
 import cors from 'cors'
-import { randomUUID } from 'crypto'
+import { randomUUID, timingSafeEqual } from 'crypto'
 import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { db } from './db.js'
 import { sendPlanPublishedEmail, sendResubmittedEmail, sendSlotApprovedEmail, sendFullyApprovedEmail, sendRevisionEmail, sendRejectedEmail } from './mailer.js'
+import { reconcileApprovals, redactApprovals, decryptApprovals } from './crypto.js'
 
 // Load .env.server for local development (production uses PM2 env vars)
 try {
@@ -22,8 +23,22 @@ try {
   }
 } catch { /* .env.server not present in production — fine */ }
 
+if (!process.env.SIGNATURE_ENCRYPTION_KEY) {
+  console.warn('[security] SIGNATURE_ENCRYPTION_KEY is not set — saving a signature will fail until it is configured.')
+}
+
 const app = express()
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173' }))
+// This server is reachable both on its LAN IP and through a NAT'd address — accept requests
+// from either (plus localhost for dev). Override entirely via ALLOWED_ORIGINS (comma-separated).
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://10.164.16.18:1011',
+  'http://172.24.71.17:1011',
+]
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
+  : DEFAULT_ALLOWED_ORIGINS
+app.use(cors({ origin: allowedOrigins }))
 app.use(express.json({ limit: '20mb' }))
 
 const now = () => new Date().toISOString()
@@ -81,10 +96,24 @@ app.get('/api/plans', (_req, res) => {
 app.get('/api/plans/:id', (req, res) => {
   const row = db.prepare('SELECT * FROM plans WHERE id = ?').get(req.params.id) as any
   if (!row) return res.status(404).json({ error: 'Plan not found' })
+  const plan = JSON.parse(row.data)
+  plan.approvals = redactApprovals(plan.approvals)
   res.json({
-    plan: JSON.parse(row.data),
+    plan,
     selfCheck: row.self_check ? JSON.parse(row.self_check) : null,
   })
+})
+
+// ── Get decrypted signatures — export only, never used for normal viewing ────────
+app.get('/api/plans/:id/signatures', (req, res) => {
+  const row = db.prepare('SELECT data FROM plans WHERE id = ?').get(req.params.id) as any
+  if (!row) return res.status(404).json({ error: 'Plan not found' })
+  try {
+    const data = JSON.parse(row.data)
+    res.json({ approvals: decryptApprovals(data.approvals) })
+  } catch (e) {
+    res.status(500).json({ error: 'Could not decrypt signatures: ' + (e as Error).message })
+  }
 })
 
 // ── Create plan ───────────────────────────────────────────────────────────────
@@ -92,7 +121,7 @@ app.post('/api/plans', (req, res) => {
   const { plan, selfCheck } = req.body
   const id = plan.id || randomUUID()
   const ts = now()
-  const planData = { ...plan, id }
+  const planData = { ...plan, id, approvals: reconcileApprovals(plan.approvals, {}) }
   db.prepare(`
     INSERT INTO plans (id, title, type, status, version, data, self_check, created_at, updated_at)
     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?)
@@ -112,18 +141,20 @@ app.post('/api/plans', (req, res) => {
 // ── Update plan (only allowed when draft or for_revision) ─────────────────────
 app.put('/api/plans/:id', (req, res) => {
   const { plan, selfCheck } = req.body
-  const row = db.prepare('SELECT status FROM plans WHERE id = ?').get(req.params.id) as any
+  const row = db.prepare('SELECT * FROM plans WHERE id = ?').get(req.params.id) as any
   if (!row) return res.status(404).json({ error: 'Plan not found' })
   if (['published', 'ongoing_approval', 'cancelled'].includes(row.status)) {
     return res.status(403).json({ error: 'Plan is locked and cannot be modified' })
   }
+  const existing = JSON.parse(row.data)
+  const mergedPlan = { ...plan, approvals: reconcileApprovals(plan.approvals, existing.approvals) }
   const ts = now()
   db.prepare(`
     UPDATE plans SET title = ?, version = ?, data = ?, self_check = ?, updated_at = ? WHERE id = ?
   `).run(
     plan.title || '',
     plan.documentVersion || '1.00',
-    JSON.stringify(plan),
+    JSON.stringify(mergedPlan),
     selfCheck ? JSON.stringify(selfCheck) : null,
     ts,
     req.params.id
@@ -157,7 +188,7 @@ app.post('/api/plans/:id/publish', (req, res) => {
     .map(k => data.approvals?.[k])
     .filter((s: any) => s?.name?.trim())
     .map((s: any) => ({ name: s.name, role: s.role, email: s.email ?? '' }))
-  const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://10.164.16.18:1011'
+  const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://172.24.71.17:1011'
   const viewLink = `${frontendOrigin}/view/${req.params.id}`
 
   db.prepare(`
@@ -204,7 +235,7 @@ app.post('/api/plans/:id/revision', (req, res) => {
   saveVersionSnapshot(req.params.id, newVersion, 'for_revision', data)
   res.json({ ok: true, newVersion })
 
-  const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://10.164.16.18:1011'
+  const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://172.24.71.17:1011'
   sendRevisionEmail({
     planId: req.params.id,
     planTitle: data.title ?? '',
@@ -248,7 +279,7 @@ app.post('/api/plans/:id/republish', (req, res) => {
   `).run(newVersion, ts, JSON.stringify(data), ts, req.params.id)
   saveVersionSnapshot(req.params.id, newVersion, 'resubmitted', data)
 
-  const frontendOriginR = process.env.FRONTEND_ORIGIN ?? 'http://10.164.16.18:1011'
+  const frontendOriginR = process.env.FRONTEND_ORIGIN ?? 'http://172.24.71.17:1011'
   const slotKeysR = ['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2', 'approvedBy3'] as const
   const approversR = slotKeysR
     .map(k => data.approvals?.[k])
@@ -322,7 +353,9 @@ app.get('/api/plans/:id/versions/:version', (req, res) => {
     'SELECT data FROM plan_versions WHERE plan_id = ? AND version = ? ORDER BY created_at DESC LIMIT 1'
   ).get(req.params.id, req.params.version) as any
   if (!row) return res.status(404).json({ error: 'Snapshot not found' })
-  res.json({ data: JSON.parse(row.data) })
+  const data = JSON.parse(row.data)
+  data.approvals = redactApprovals(data.approvals)
+  res.json({ data })
 })
 
 // ── Reject plan ───────────────────────────────────────────────────────────────
@@ -341,7 +374,7 @@ app.post('/api/plans/:id/reject', (req, res) => {
     .run('rejected', JSON.stringify(data), ts, req.params.id)
   res.json({ ok: true })
 
-  const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://10.164.16.18:1011'
+  const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://172.24.71.17:1011'
   sendRejectedEmail({
     planId: req.params.id,
     planTitle: data.title ?? '',
@@ -370,14 +403,15 @@ app.post('/api/plans/:id/cancel', (req, res) => {
   res.json({ ok: true })
 })
 
-// ── Save progress (actual marks + status) when plan is published & fully approved ──
+// ── Save progress (actual marks + status) — allowed once submitted, not just once
+// fully approved, so real-world work already underway isn't blocked on paperwork ──
 app.post('/api/plans/:id/save-progress', (req, res) => {
   const { activities } = req.body
   const row = db.prepare('SELECT * FROM plans WHERE id = ?').get(req.params.id) as any
   if (!row) return res.status(404).json({ error: 'Plan not found' })
   const data = JSON.parse(row.data)
-  if (row.status !== 'published') {
-    return res.status(403).json({ error: 'Progress save only allowed on published (fully approved) plans' })
+  if (!['ongoing_approval', 'published'].includes(row.status)) {
+    return res.status(403).json({ error: 'Progress save only allowed once the plan has been submitted for approval' })
   }
   const updated = (data.activities as any[]).map((act: any) => {
     const incoming = (activities as any[]).find((a: any) => a.id === act.id)
@@ -392,11 +426,12 @@ app.post('/api/plans/:id/save-progress', (req, res) => {
 
 // ── Update approvals only (used by viewer for signatures + remarks) ───────────
 app.post('/api/plans/:id/approve', (req, res) => {
-  const { approvals } = req.body
+  const { approvals: incomingApprovals } = req.body
   const row = db.prepare('SELECT * FROM plans WHERE id = ?').get(req.params.id) as any
   if (!row) return res.status(404).json({ error: 'Plan not found' })
   const data = JSON.parse(row.data)
   const oldApprovals = data.approvals ?? {}
+  const approvals = reconcileApprovals(incomingApprovals, oldApprovals)
   data.approvals = approvals
   const ts = now()
 
@@ -418,7 +453,7 @@ app.post('/api/plans/:id/approve', (req, res) => {
   res.json({ ok: true })
 
   // Detect newly signed slot and send sequential approval emails (best-effort)
-  const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://10.164.16.18:1011'
+  const frontendOrigin = process.env.FRONTEND_ORIGIN ?? 'http://172.24.71.17:1011'
   const viewLink = `${frontendOrigin}/view/${req.params.id}`
   const lastSlot = requiresDeptManager ? 'approvedBy3' : 'approvedBy2'
   const nextSlotMap: Record<string, string> = requiresDeptManager
@@ -609,6 +644,103 @@ app.post('/api/notifications/:id/ack', (req, res) => {
   db.prepare('UPDATE notifications SET dispatched = 1, dispatched_at = ? WHERE id = ?')
     .run(now(), req.params.id)
   res.json({ ok: true })
+})
+
+// ── MH export for the OSS Utilities portal's MH Planner ─────────────────────
+// The portal polls this every 30 minutes and turns each planned day × PIC
+// into MH allocations. Only plans in approval or published count. Returns
+// just what that needs — no signatures or approval data — and requires the
+// shared key in MH_EXPORT_API_KEY (disabled when unset).
+const MH_EXPORT_STATUSES = ['ongoing_approval', 'published']
+
+// An activity's PIC value is either a person's name (plans with
+// stakeholders) or a role label from older plans ("SMART Member",
+// "Developer", "SE", …). Resolve it to the people behind it.
+const LEGACY_ROLE_FIELDS: Record<string, string[]> = {
+  'SMART MEMBER': ['smartMember'],
+  'SUPPORT PIC': ['smartMember'],
+  'MAIN SUPPORT': ['smartMember'],
+  'PIC': ['smartMember', 'developer'],
+  'REQUESTOR': ['requestor'],
+  'DEVELOPER': ['developer'],
+  'DESIGNER': ['designer'],
+  'SE': ['se'],
+  'SYSTEM EXPERT': ['se'],
+  'PM': ['pm'],
+  'PROJECT MANAGER': ['pm'],
+}
+
+function resolvePicNames(data: any, pic: string): string[] {
+  const value = String(pic ?? '').trim()
+  if (!value) return []
+  const key = value.toUpperCase()
+  const stakeholders: any[] = data.stakeholders ?? []
+  const personsList: any[] = data.personsList ?? []
+
+  if (stakeholders.some(s => String(s.name ?? '').trim().toUpperCase() === key)) return [value]
+  if (personsList.some(p => String(p.name ?? '').trim().toUpperCase() === key)) return [value]
+
+  const byRole = new Set<string>()
+  for (const s of stakeholders) {
+    if ((s.roles ?? []).some((r: string) => String(r).trim().toUpperCase() === key) && s.name?.trim()) byRole.add(s.name.trim())
+  }
+  for (const p of personsList) {
+    if (String(p.role ?? '').trim().toUpperCase() === key && p.name?.trim()) byRole.add(p.name.trim())
+  }
+  if (!byRole.size) {
+    for (const field of LEGACY_ROLE_FIELDS[key] ?? []) {
+      const name = data.persons?.[field]
+      if (typeof name === 'string' && name.trim()) { byRole.add(name.trim()); break }
+    }
+  }
+  if (byRole.size) return [...byRole]
+  // A role label nobody fills (e.g. "Manager") isn't a person.
+  return /^(manager|requestor|customer|se|pm|pic)$/i.test(value) ? [] : [value]
+}
+
+function validExportKey(given: string | undefined): boolean {
+  const expected = process.env.MH_EXPORT_API_KEY
+  if (!expected || !given) return false
+  const a = Buffer.from(given)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+app.get('/api/mh-export', (req, res) => {
+  if (!process.env.MH_EXPORT_API_KEY) return res.status(503).json({ error: 'MH export is not enabled (MH_EXPORT_API_KEY not set)' })
+  if (!validExportKey(req.get('x-api-key'))) return res.status(401).json({ error: 'Invalid API key' })
+
+  const rows = db.prepare(
+    `SELECT id, title, type, status, updated_at, data FROM plans WHERE status IN (${MH_EXPORT_STATUSES.map(() => '?').join(', ')})`
+  ).all(...MH_EXPORT_STATUSES) as any[]
+
+  const plans = rows.map(row => {
+    let data: any = {}
+    try { data = JSON.parse(row.data) } catch { /* unreadable plan — exported without activities */ }
+    return {
+      planId: row.id,
+      title: row.title || data.title || '',
+      type: row.type,
+      status: row.status,
+      itNumber: data.itNumber ?? '',
+      groupType: data.groupType ?? null,
+      updatedAt: row.updated_at,
+      activities: (data.activities ?? []).map((a: any) => ({
+        activityId: a.id,
+        number: a.number ?? '',
+        name: a.name ?? '',
+        isPhase: !!a.isPhase,
+        hoursPerDay: a.hoursPerDay ?? 8,
+        pics: (a.picEntries ?? []).map((p: any) => ({
+          label: p.pic ?? '',
+          names: resolvePicNames(data, p.pic),
+          raci: p.raci ?? {},
+        })),
+        planDates: (a.dayMarks ?? []).filter((d: any) => d?.plan).map((d: any) => d.date),
+      })),
+    }
+  })
+  res.json({ generatedAt: now(), plans })
 })
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001

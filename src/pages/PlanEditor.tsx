@@ -1,21 +1,19 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import type { ActivityPlan, SelfCheckTR, CompanyHoliday } from '../types'
+import type { ActivityPlan, CompanyHoliday } from '../types'
 import { diffPlans, type DiffSection } from '../planDiff'
 import { computeInsights } from '../planInsights'
+import { hideSignedImages } from '../utils'
 import InsightsPanel from '../components/InsightsPanel'
-import { createDefaultSelfCheck, autoFillNameForRole } from '../utils'
 import { exportToPDF } from '../pdfExporter'
 import { exportToExcel } from '../exporter'
 import { api } from '../api'
 import PlanHeader from '../components/PlanHeader'
 import ApprovalSection from '../components/ApprovalSection'
 import ActivityTable from '../components/ActivityTable'
-import SelfCheckTRView from '../components/SelfCheckTRView'
 import UpdatesLog from '../components/UpdatesLog'
 import ConfirmModal from '../components/ConfirmModal'
 
-type Tab = 'plan' | 'selfcheck'
 type SideSection = 'approval' | 'details'
 
 const DOC_STATUS_BANNER: Record<string, { bg: string; text: string; label: string }> = {
@@ -30,8 +28,6 @@ export default function PlanEditor() {
   const navigate = useNavigate()
 
   const [plan, setPlan] = useState<ActivityPlan | null>(null)
-  const [selfCheck, setSelfCheck] = useState<SelfCheckTR | null>(null)
-  const [tab, setTab] = useState<Tab>('plan')
   const [sideSection, setSideSection] = useState<SideSection>('approval')
   const [showUpdates, setShowUpdates] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -63,6 +59,18 @@ export default function PlanEditor() {
     [plan, companyHolidays]
   )
 
+  // Surface insights proactively instead of leaving them undiscovered behind the toggle —
+  // open the drawer once, the first time a plan turns up at-risk/delayed. The user can
+  // close it; we don't force it back open after that for the rest of this page view.
+  const autoOpenedInsightsRef = useRef(false)
+  useEffect(() => {
+    if (autoOpenedInsightsRef.current) return
+    if (!insight) return
+    if (insight.label !== 'at_risk' && insight.label !== 'delayed') return
+    autoOpenedInsightsRef.current = true
+    setShowInsights(true)
+  }, [insight])
+
   useEffect(() => {
     if (!showExportMenu) return
     const handler = (e: MouseEvent) => {
@@ -79,9 +87,8 @@ export default function PlanEditor() {
     if (!id) { navigate('/'); return }
     setLoading(true)
     api.getPlan(id)
-      .then(({ plan: p, selfCheck: sc }) => {
+      .then(({ plan: p }) => {
         setPlan(p)
-        setSelfCheck(sc ?? createDefaultSelfCheck())
         setLoading(false)
       })
       .catch(() => { alert('Plan not found.'); navigate('/') })
@@ -106,14 +113,17 @@ export default function PlanEditor() {
     ? ['preparedBy', 'reviewedBy', 'approvedBy1', 'approvedBy2'].every(k => !!(plan.approvals as any)[k]?.signatureImage)
       && (!plan.requiresDeptManager || !!(plan.approvals as any).approvedBy3?.signatureImage)
     : false
-  const partialEdit = plan?.status === 'published' && allApproved
+  // Actual-marking/status stays editable while a plan is pending approval too — work often
+  // starts on its scheduled date before every signature is in, and shouldn't have to wait.
+  // Everything else (activities, dates, approvals, plan details) stays locked by `isLocked`.
+  const partialEdit = plan?.status === 'ongoing_approval' || (plan?.status === 'published' && allApproved)
 
   async function handleSave() {
-    if (!plan || !selfCheck || saving) return
+    if (!plan || saving) return
     setSaving(true)
     setSaveError(null)
     try {
-      await api.updatePlan(plan.id, plan, selfCheck)
+      await api.updatePlan(plan.id, plan)
       dirtyRef.current = false
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -126,36 +136,20 @@ export default function PlanEditor() {
 
   // Validate pre-publish requirements
   function validateBeforePublish(): string | null {
-    if (!plan || !selfCheck) return null
+    if (!plan) return null
     if (!plan.title.trim()) return 'Please enter a plan title.'
     if (!plan.approvals.preparedBy.signatureImage) return 'PIC must upload their signature in the Approval section before submitting.'
-    const hasCheck1 = selfCheck.items.some(i => i.selfCheck1.trim())
-    if (!hasCheck1) return 'Self Check / TR: at least one item must have a 1st Round result before submitting.'
     return null
   }
 
-  // Auto-fill selfCheckPIC and trPIC from persons data before publishing
-  function prepareSelfCheck(sc: SelfCheckTR): SelfCheckTR {
-    if (!plan) return sc
-    const picName = autoFillNameForRole('PIC', plan.type, plan.persons, plan.personsList, plan.stakeholders)
-    const trName = autoFillNameForRole('PROJECT LEADER', plan.type, plan.persons, plan.personsList, plan.stakeholders) || autoFillNameForRole('SUPERVISOR', plan.type, plan.persons, plan.personsList, plan.stakeholders)
-    return {
-      ...sc,
-      selfCheckPIC: sc.selfCheckPIC || picName,
-      trPIC: sc.trPIC || trName,
-    }
-  }
-
   async function doPublish() {
-    if (!plan || !selfCheck || publishing) return
+    if (!plan || publishing) return
     setPublishing(true)
     setPublishError(null)
     try {
-      const prepared = prepareSelfCheck(selfCheck)
-      setSelfCheck(prepared)
-      await api.updatePlan(plan.id, plan, prepared)
+      await api.updatePlan(plan.id, plan)
       await api.publishPlan(plan.id)
-      setPlan(prev => prev ? { ...prev, status: 'published' } : prev)
+      setPlan(prev => prev ? { ...prev, status: 'published', approvals: hideSignedImages(prev.approvals) } : prev)
       dirtyRef.current = false
     } catch (e) {
       setPublishError((e as Error).message)
@@ -166,18 +160,17 @@ export default function PlanEditor() {
   }
 
   async function doRepublish() {
-    if (!plan || !selfCheck || publishing) return
+    if (!plan || publishing) return
     setPublishing(true)
     try {
-      const prepared = prepareSelfCheck(selfCheck)
-      setSelfCheck(prepared)
-      await api.updatePlan(plan.id, plan, prepared)
+      await api.updatePlan(plan.id, plan)
       const { newVersion } = await api.republish(plan.id, plan.approvals.preparedBy.name || '')
       const today = new Date().toISOString().slice(0, 10)
       setPlan(prev => prev ? {
         ...prev,
         status: 'ongoing_approval',
         documentVersion: newVersion,
+        approvals: hideSignedImages(prev.approvals),
         versionHistory: [
           ...(prev.versionHistory ?? []),
           { version: newVersion, date: today, reason: 'Re-submitted for approval after revision', by: prev.approvals.preparedBy.name || '' },
@@ -229,16 +222,30 @@ export default function PlanEditor() {
   }
 
   const handleExport = useCallback(async () => {
-    if (!plan || !selfCheck || exporting) return
+    if (!plan || exporting) return
     setExporting(true)
-    try { await exportToPDF(plan, selfCheck) } finally { setExporting(false) }
-  }, [plan, selfCheck, exporting])
+    try {
+      const approvals = await api.getExportApprovals(plan.id)
+      await exportToPDF({ ...plan, approvals })
+    } catch (e) {
+      alert('Export failed: ' + (e as Error).message)
+    } finally {
+      setExporting(false)
+    }
+  }, [plan, exporting])
 
   const handleExportExcel = useCallback(async () => {
-    if (!plan || !selfCheck || exportingExcel) return
+    if (!plan || exportingExcel) return
     setExportingExcel(true)
-    try { await exportToExcel(plan, selfCheck) } finally { setExportingExcel(false) }
-  }, [plan, selfCheck, exportingExcel])
+    try {
+      const approvals = await api.getExportApprovals(plan.id)
+      await exportToExcel({ ...plan, approvals })
+    } catch (e) {
+      alert('Export failed: ' + (e as Error).message)
+    } finally {
+      setExportingExcel(false)
+    }
+  }, [plan, exportingExcel])
 
   async function handleSaveProgress() {
     if (!plan || saving) return
@@ -299,7 +306,7 @@ export default function PlanEditor() {
     )
   }
 
-  if (!plan || !selfCheck) return null
+  if (!plan) return null
 
   const isDev = plan.type === 'development'
   const banner = DOC_STATUS_BANNER[plan.status]
@@ -394,19 +401,13 @@ export default function PlanEditor() {
       <header className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm">
         <div className="px-4 py-2 flex items-center gap-3 flex-wrap">
           <button onClick={handleBack} className="text-gray-400 hover:text-gray-600 text-sm shrink-0">← Back</button>
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${isDev ? 'bg-blue-100 text-blue-700' : plan.type === 'training' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
-            {isDev ? 'Development' : plan.type === 'training' ? 'Training' : 'Support'}
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${isDev ? 'bg-blue-100 text-blue-700' : plan.type === 'training' ? 'bg-purple-100 text-purple-700' : plan.type === 'implementation' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+            {isDev ? 'Development' : plan.type === 'training' ? 'Training' : plan.type === 'implementation' ? 'Implementation' : 'Support'}
           </span>
           <span className="text-gray-700 font-medium text-sm truncate flex-1 min-w-0">
             {plan.title || <span className="text-gray-400 italic">Untitled Plan</span>}
           </span>
           <span className="text-xs text-gray-400 shrink-0">v{plan.documentVersion}</span>
-
-          {/* Tab switcher */}
-          <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs shrink-0">
-            <button className={`px-3 py-1.5 transition-colors ${tab === 'plan' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`} onClick={() => setTab('plan')}>Activity Plan</button>
-            <button className={`px-3 py-1.5 transition-colors ${tab === 'selfcheck' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`} onClick={() => setTab('selfcheck')}>Self Check / TR</button>
-          </div>
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 shrink-0">
@@ -454,19 +455,27 @@ export default function PlanEditor() {
               </>
             )}
 
-            {/* Insights toggle — only when published */}
-            {plan.status === 'published' && (
+            {/* Insights toggle — available once submitted (ongoing_approval) or published */}
+            {(plan.status === 'ongoing_approval' || plan.status === 'published') && (
               <button
                 onClick={() => { setShowInsights(v => !v); setShowUpdates(false) }}
                 title="Toggle forecast insights"
-                className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${showInsights ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
+                  showInsights
+                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                    : insight?.label === 'delayed' && !showInsights
+                      ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100'
+                      : insight?.label === 'at_risk' && !showInsights
+                        ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
+                        : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                }`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 Insights
                 {insight && (insight.label === 'delayed' || insight.label === 'at_risk') && !showInsights && (
-                  <span className={`w-1.5 h-1.5 rounded-full ${insight.label === 'delayed' ? 'bg-red-400' : 'bg-amber-400'}`} />
+                  <span className="font-semibold">· {insight.label === 'delayed' ? 'Delayed' : 'At Risk'}</span>
                 )}
               </button>
             )}
@@ -548,9 +557,7 @@ export default function PlanEditor() {
 
       {/* Body */}
       <div className="flex-1 flex overflow-hidden">
-        {tab === 'plan' && (
-          <>
-            {/* Sidebar */}
+        {/* Sidebar */}
             <aside className="w-72 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
               <div className="flex border-b border-gray-200 flex-shrink-0">
                 <button
@@ -614,7 +621,12 @@ export default function PlanEditor() {
                   </>
                 )}
                 {sideSection === 'details' && (
-                  <PlanHeader plan={plan} onChange={handlePlanChange} readOnly={isLocked} />
+                  <PlanHeader
+                    plan={plan}
+                    onChange={handlePlanChange}
+                    readOnly={isLocked}
+                    onViewInsights={(plan.status === 'ongoing_approval' || plan.status === 'published') ? () => setShowInsights(true) : undefined}
+                  />
                 )}
               </div>
             </aside>
@@ -625,7 +637,7 @@ export default function PlanEditor() {
             </main>
 
             {/* Right insights drawer */}
-            {showInsights && tab === 'plan' && (
+            {showInsights && (
               <InsightsPanel
                 insight={insight}
                 planStatus={plan.status}
@@ -658,14 +670,6 @@ export default function PlanEditor() {
                 </div>
               </aside>
             )}
-          </>
-        )}
-
-        {tab === 'selfcheck' && (
-          <main className="flex-1 overflow-auto p-4">
-            <SelfCheckTRView data={selfCheck} onChange={isLocked ? () => {} : setSelfCheck} readOnly={isLocked} />
-          </main>
-        )}
       </div>
     </div>
   )
